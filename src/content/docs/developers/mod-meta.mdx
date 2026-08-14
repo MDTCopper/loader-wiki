@@ -1,0 +1,257 @@
+---
+title: 模组元数据
+description: copper.mod.json 的完整语法详解。
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Copper 模组使用 **`copper.mod.json`**（或 `copper.mod.hjson`）作为元数据文件，位于 Jar **根目录**。它与 Mindustry 原版的 `mod.json` / `mod.hjson` **完全不同**，请注意区分。
+
+<Aside type="note" title="HJSON 与 JSON">
+	HJSON 是 JSON 的超集：任何合法的 JSON 都是合法的 HJSON，此外还支持注释、省略引号等便捷写法。加载器对两种扩展名一视同仁，均使用 HJSON 语法解析。
+</Aside>
+
+## 文件顶层结构
+
+元数据文件分为两层：一个 `version` 字段（格式版本号，目前恒为 `1`）与一个 `meta` 对象（模组的实际信息）。
+
+```json
+{
+  "version": 1,
+  "meta": {
+    // ... 见下文
+  }
+}
+```
+
+## 完整示例
+
+```json
+{
+  "version": 1,
+  "meta": {
+    "id": "example:examplemod",
+    "name": "Example Mod",
+    "author": "Example",
+    "main": "example.examplemod.ExampleMod",
+    "version": "1.0.0",
+
+    "description": "A short description.",
+    "hidden": false,
+    "repo": "user/repo",
+    "extra": { "subtitle": "My subtitle" },
+
+    "dependencies": {
+      "some:mod": ">=1.0.0",
+      "other:mod": ["3.2.1", "4.0.0"],
+      "mindustry": ">=8.159",
+      "loader": ">=0.1.0"
+    },
+    "conflicts": {
+      "bad:mod": "*"
+    },
+
+    "exports": [
+      "exclude example.examplemod.internal.*",
+      "include example.examplemod.*"
+    ],
+    "imports": {
+      "dep:mod": ["include dep.sub.*", "include dep.extra.*"]
+    },
+
+    "mixins": {
+      "mindustry": "mixins/mindustry.json",
+      "some:mod": "mixins/some.json"
+    }
+  }
+}
+```
+
+## 必填字段
+
+### id
+
+模组唯一标识。
+
+- 类型：字符串
+- 格式：**`作者:模组名`**，中间必须有且仅有一个冒号（`:`）；
+- 允许的字符遵循 Java 包命名规则：字母、数字、下划线；**禁止**空格、点（`.`）、连字符（`-`）、逗号（`,`）；
+- 不允许以 `mindustry:` 开头、不允许等于 `mindustry`、不允许以 `loader:` 开头、不允许等于 `loader`（这些是保留 id）。
+
+```json
+"id": "example:examplemod"
+```
+
+### name
+
+- 类型：字符串
+- 在游戏中显示的模组名称，可以包含空格与格式代码。
+
+### author
+
+- 类型：字符串
+
+### main
+
+- 类型：字符串
+- 主类的**全限定类名**（FQCN）；
+- **必须**以 `id` 把冒号替换为点后的形式开头。例如 `id` 为 `example:examplemod`，则 `main` 必须以 `example.examplemod.` 开头：
+
+```json
+"main": "example.examplemod.ExampleMod"
+```
+
+- 主类必须继承 `CopperMod`（见[主类与生命周期](/developers/main-class/)）。
+
+### version
+
+- 类型：字符串
+- **语义化版本（SemVer）**，形如 `X.Y.Z`（缺省分量按 0 处理，如 `"1.2"` 等价于 `1.2.0`）；
+- 这是依赖系统比较版本的基础（见[版本、依赖与冲突](/developers/versions/)）。
+
+```json
+"version": "1.0.0"
+```
+
+## 可选字段
+
+### description
+
+- 类型：字符串，默认 `""`
+- 显示在模组管理器中的简短描述。
+
+### hidden
+
+- 类型：布尔值，默认 `false`
+- 为 `true` 表示隐藏模组：仅作服务端或客户端逻辑，**不能注册新的游戏内容**（方块、物品等）。
+
+### repo
+
+- 类型：字符串，默认 `""`
+- 模组仓库或主页地址。
+
+### extra
+
+- 类型：对象，默认 `{}`
+- 透传给原版 `ModMeta` 的附加字段，例如 `subtitle`。Copper 核心模组会把它桥接进 Mindustry 的模组注册表。
+
+```json
+"extra": { "subtitle": "My subtitle" }
+```
+
+### dependencies
+
+- 类型：对象（映射：模组 id → 版本过滤条件）
+- 声明本模组依赖的其他模组及其版本要求。版本过滤条件的写法见[版本、依赖与冲突](/developers/versions/#版本过滤条件写法)。
+
+```json
+"dependencies": {
+  "some:mod": ">=1.0.0",
+  "other:mod": ["3.2.1", "4.0.0"]
+}
+```
+
+**特殊 id：**
+
+| id | 含义 |
+| -- | ---- |
+| `mindustry` | 游戏本体（按游戏版本检查） |
+| `loader` | Copper 加载器（按加载器版本检查） |
+
+### conflicts
+
+- 类型：对象（映射：模组 id → 版本过滤条件）
+- 声明本模组**与哪些模组冲突**。如果环境中存在匹配版本的目标模组，加载被拒绝。
+
+```json
+"conflicts": {
+  "bad:mod": "*"
+}
+```
+
+<Aside type="note" title="原版没有显式冲突的概念">
+	这是 Copper **新增**的能力——原版 Mindustry 没有显式冲突的概念。冲突判断与依赖一致，同样支持 `mindustry` 与 `loader` 特殊 id（例如声明与某些游戏版本冲突）。
+</Aside>
+
+#### 依赖与冲突的区别
+
+| | 目标存在且版本匹配 | 目标不存在 |
+| - | ----------------- | ---------- |
+| `dependencies` | 通过（并建立类可见性，见[类隔离机制](/developers/class-visibility/)） | **报错**：找不到依赖 |
+| `conflicts` | **报错**：模组冲突 | 通过 |
+
+### exports
+
+- 类型：字符串数组
+- 控制本模组的类对**其他模组**的可见性。每条规则是 `"include <模式>"` 或 `"exclude <模式>"`，模式支持通配符 `*`（任意字符序列）与 `?`（单个字符）；
+- 规则**从上到下依次匹配**，第一条匹配的规则生效；没有规则匹配时默认**拒绝**；
+- 系统会在你写的规则**末尾自动追加** `include <id 的点形式>.*`（例如 `include example.examplemod.*`）。
+
+```json
+"exports": [
+  "exclude example.examplemod.internal.*",
+  "include example.examplemod.*"
+]
+```
+
+上面例子的意图：隐藏 `internal` 子包，其余全部导出。因为 `exclude` 写在前面，先匹配到它就会拒绝。
+
+### imports
+
+- 类型：对象（映射：依赖模组 id → 规则或规则数组）
+- 针对某个依赖模组，**额外授予**的类可见性。规则语法与 `exports` 相同（从上到下匹配）；
+- 只有**声明在 `dependencies` 中**的模组才能出现在这里。
+
+```json
+"imports": {
+  "dep:mod": ["include dep.sub.*", "include dep.extra.*"]
+}
+```
+
+> 行为细节与典型用法见[类隔离机制 · 导入规则](/developers/class-visibility/#imports-导入规则)。
+
+### mixins
+
+- 类型：对象（映射：目标模组 id → 配置路径）
+- 声明本模组要注入的目标，以及对应的 Mixin 配置文件路径；
+- **目标 id** 可以是 `mindustry`（游戏本体）或任意已安装模组的 id（包括其他 Copper 模组，也包括原版 Mindustry 模组，如 `mindustry:new-horizon`）；
+- **配置路径**是相对于 `assets/copper/` 的文件路径，例如 `"mixins/mindustry.json"` 实际指向 Jar 内的 `assets/copper/mixins/mindustry.json`；
+- 配置文件的语法见[Mixin 配置 JSON 详解](/developers/mixin/config/)。
+
+```json
+"mixins": {
+  "mindustry": "mixins/mindustry.json",
+  "some:mod": "mixins/some.json"
+}
+```
+
+**注意：** `loader` 不是合法的 Mixin 目标——你不能对加载器自身应用 Mixin。
+
+## 元数据格式版本
+
+当前版本号为 `1`（顶层 `version` 字段）。加载器按版本号选择对应的解析器，未来格式变更时老版本仍可被兼容读取。版本号非法（`<= 0` 或超出支持范围）时，加载会报错：
+
+```
+meta version is not supported: <版本号>
+```
+
+## 字段速查表
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+| ---- | ---- | ---- | ------ | ---- |
+| `version`（顶层） | 整数 | 是 | — | 格式版本号，当前为 `1` |
+| `meta`（顶层） | 对象 | 是 | — | 元数据主体 |
+| `id` | 字符串 | 是 | — | `作者:模组名` |
+| `name` | 字符串 | 是 | — | 显示名称 |
+| `author` | 字符串 | 是 | — | 作者 |
+| `main` | 字符串 | 是 | — | 主类 FQCN，必须以 id 的点形式开头 |
+| `version` | 字符串 | 是 | — | SemVer 版本 |
+| `description` | 字符串 | 否 | `""` | 描述 |
+| `hidden` | 布尔 | 否 | `false` | 隐藏模组（无新内容） |
+| `repo` | 字符串 | 否 | `""` | 仓库地址 |
+| `extra` | 对象 | 否 | `{}` | 透传附加字段 |
+| `dependencies` | 对象 | 否 | `{}` | 依赖（id → 版本过滤） |
+| `conflicts` | 对象 | 否 | `{}` | 显式冲突（id → 版本过滤） |
+| `exports` | 字符串数组 | 否 | `[]` | 导出规则 |
+| `imports` | 对象 | 否 | `{}` | 导入规则（依赖 id → 规则） |
+| `mixins` | 对象 | 否 | `{}` | Mixin 配置（目标 id → 路径） |

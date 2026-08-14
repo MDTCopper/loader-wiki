@@ -1,0 +1,372 @@
+---
+title: Mixin 入门教程
+description: 面向零基础读者的 Mixin 教程，全部使用 Mindustry 实例。
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+本教程**假定你完全不了解 Mixin**，但已经会写 Mindustry Java 模组。我们会用 Mindustry 里的真实例子，一步步建立对 Mixin 的完整认识。
+
+<Aside type="note" title="本教程的定位">
+	本教程只覆盖**最常用**的注解。完整注解清单见[注解参考手册](/developers/mixin/reference/)；Mixin 官方 wiki（[SpongePowered Mixin Wiki](https://github.com/SpongePowered/Mixin/wiki)）的 Introduction 系列也值得一读，本文档是其 Mindustry 化的入门版本。
+</Aside>
+
+## 第一个 Mixin
+
+### 目标
+
+让游戏在完成启动时打印一行我们自己的日志——不修改游戏代码，只靠注入。
+
+### 准备
+
+<Steps>
+1. **声明 Mixin 目标。** 确保项目已配置好 Mixin 注解处理器（见[快速开始](/developers/getting-started/)），并在 `copper.mod.json` 中声明了 Mixin 目标：
+
+	```json
+	{
+	  "version": 1,
+	  "meta": {
+	    "id": "example:examplemod",
+	    "main": "example.examplemod.ExampleMod",
+	    "mixins": {
+	      "mindustry": "mixins/mindustry.json"
+	    }
+	  }
+	}
+	```
+
+2. **创建 Mixin 配置。** 在 `res/assets/copper/mixins/mindustry.json` 创建 Mixin 配置：
+
+	```json
+	{
+	  "version": 1,
+	  "config": {
+	    "required": true,
+	    "minVersion": "0.8",
+	    "package": "example.examplemod.patch.impl",
+	    "mixins": {
+	      "*": ["MyPatch"]
+	    }
+	  }
+	}
+	```
+3. **编写 Mixin 类。** 在 `src/你的包名/patch/impl/MyPatch.java` 创建 Mixin 类：
+
+	```java
+	package example.examplemod.patch.impl;
+
+	import arc.util.Log;
+	import mindustry.Vars;
+	import org.spongepowered.asm.mixin.Mixin;
+	import org.spongepowered.asm.mixin.injection.At;
+	import org.spongepowered.asm.mixin.injection.Inject;
+	import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+	@Mixin(Vars.class)
+	public abstract class MyPatch {
+
+	    @Inject(method = "finishLaunch", at = @At("RETURN"))
+	    private static void addInjectedLog(CallbackInfo ci) {
+	        Log.info("Injected to Vars::finishLaunch by example mod.");
+	    }
+	}
+	```
+</Steps>
+
+### 逐行解释
+
+| 代码 | 作用 |
+| ---- | ---- |
+| `@Mixin(Vars.class)` | 声明本类是一个 Mixin，目标类是 `mindustry.Vars` |
+| `@Inject(...)` | 声明注入点：把下面的方法注入到目标方法里 |
+| `method = "finishLaunch"` | 要注入的目标方法名 |
+| `at = @At("RETURN")` | 注入位置：目标方法的所有 return 语句之前 |
+| `CallbackInfo ci` | 注入回调的固定参数（目标方法返回 void 时使用） |
+| `private static` | 注入方法通常写成私有静态/实例方法，避免被当作目标类方法使用 |
+
+<Aside type="tip" title="Mixin 类的写法">
+	Mixin 类本身建议声明为 `abstract`，并且**永远不要实例化**——它只是注入的"模板"。
+</Aside>
+
+### 效果
+
+启动游戏，你会在控制台看到：
+
+```
+Injected to Vars::finishLaunch by example mod.
+```
+
+这正是 [mod-templete](https://github.com/MDTCopper/loader) 中的官方示例。
+
+## 核心注解 @Mixin
+
+`@Mixin` 声明"我要修改谁"。三种写法：
+
+```java
+// 写法 1：目标类编译期可见（推荐，有类型检查）
+@Mixin(Vars.class)
+public abstract class MyPatch {}
+
+// 写法 2：目标类不可见（内部类、包私有类），用字符串全限定名
+@Mixin(targets = "mindustry.ui.dialogs.ContentInfoDialog$ContentTable")
+public abstract class InnerPatch {}
+
+// 写法 3：同时注入多个类
+@Mixin({Vars.class, Core.class})
+public abstract class MultiPatch {}
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+| ---- | ---- | ------ | ---- |
+| `value` | `Class<?>[]` | `{}` | 目标类（编译期可见时用） |
+| `targets` | `String[]` | `{}` | 目标类全限定名（内部类、不可见类） |
+| `priority` | `int` | `1000` | 优先级，数值越小越先应用（用于多个 Mixin 冲突时） |
+| `remap` | `boolean` | `false` | 混淆映射开关。**Mindustry 无需混淆，保持默认 `false` 即可** |
+
+<Aside type="note" title="内部类用 $ 分隔">
+	内部类用 `$` 分隔：`外部类$内部类`，例如 `mindustry.Vars$SomeInner`。
+</Aside>
+
+## 注入方法 @Inject
+
+`@Inject` 是最常用的注解：把一段代码插入目标方法的指定位置。
+
+### 注入位置
+
+| 位置 | 含义 | 示例 |
+| ---- | ---- | ---- |
+| `HEAD` | 方法开头 | `@At("HEAD")` |
+| `RETURN` | 每个 return 语句之前（含隐式 return） | `@At("RETURN")` |
+| `TAIL` | 方法末尾（最后一个返回点） | `@At("TAIL")` |
+| `INVOKE` | 某个方法调用之前 | `@At(value = "INVOKE", target = "Lmindustry/Vars;foo()V")` |
+| `CONSTANT` | 某个常量出现处 | `@At(value = "CONSTANT", args = "intValue=0")` |
+
+### 回调参数
+
+注入方法必须带一个回调参数，根据目标方法的返回值选择：
+
+| 目标方法返回 | 回调参数 |
+| ------------ | -------- |
+| `void` | `CallbackInfo ci` |
+| 非 `void` | `CallbackInfoReturnable<返回类型> cir` |
+
+```java
+// 目标：public int getBuildCost(Item item)
+@Inject(method = "getBuildCost", at = @At("RETURN"))
+private void patchCost(CallbackInfoReturnable<Integer> cir) {
+    int cost = cir.getReturnValue();
+    cir.setReturnValue(cost + 1);   // 修改返回值
+}
+```
+
+### 可选注入
+
+```java
+@Inject(method = "update", at = @At("HEAD"), cancellable = true)
+private void cancelUpdate(CallbackInfo ci) {
+    if (Vars.state.isPaused()) {
+        ci.cancel();   // 取消目标方法的后续执行
+    }
+}
+```
+
+### 匹配方法名
+
+`method` 参数可以是：
+
+- 方法名：`"finishLaunch"`（有重载时需带描述符，见下）；
+- 方法名+描述符：`"getBuildCost(Lmindustry/type/Item;)I"`——**有多个重载时用描述符精确指定**；
+- `<init>`（构造器）、`<clinit>`（静态初始化块）等特殊名称。
+
+<Aside type="tip" title="调试期不确定描述符时">
+	可先写方法名试试；报 `Multiple methods matched` 错误说明需要描述符。
+</Aside>
+
+## 访问私有成员 @Shadow
+
+`@Shadow` 让 Mixin 能"借用"目标类的私有字段和方法：
+
+```java
+@Mixin(Vars.class)
+public abstract class VarsPatch {
+
+    // 目标：private static final int someCounter
+    @Shadow
+    private static int someCounter;
+
+    // 目标：private void doSecret()
+    @Shadow
+    private static void doSecret() {}
+}
+```
+
+要点：
+
+- 影子字段/方法的**签名必须与目标一致**（名称、类型、参数）；
+- 影子方法写成 `abstract`（方法体无所谓，应用时会被替换）；
+- **影子字段以读取为主**：直接给影子字段赋值要谨慎——目标字段若是 `final`，必须加 `@Mutable` 才能写（见[注解参考手册](/developers/mixin/reference/#mutable)），而且目标类代码随时可能重置你写入的值；
+- 想给目标实例**附加自己的状态**时，别去改写目标字段，用 `@Unique` 声明自己的新字段更稳妥（见下）。
+
+## 新增成员
+
+先说明：Mixin 类里声明的**普通字段/方法**（不加任何注解），应用时会被**合并进目标类**，成为目标类的新成员——"给目标类新增成员"本来就是 Mixin 的默认行为：
+
+```java
+@Mixin(SomeClass.class)
+public abstract class Patch {
+    private int myCounter;   // 合并进目标类，成为新字段
+    private void helper() {} // 合并进目标类，成为新方法
+}
+```
+
+但普通成员是"覆盖层"式的，遇到重名很危险：
+
+- **方法与目标方法同名同签名** → 会**直接覆写目标方法**。非混淆环境下不加 `@Overwrite` 也会覆写（见[完全覆写 @Overwrite](#完全覆写-overwrite)），可能悄悄改掉游戏原有逻辑；
+- **字段与目标字段同名** → 字段无法覆写，会被丢弃或直接报错。
+
+所以普通成员只适合"目标类里肯定没有"的新名字。想安全地新增成员，并让重名冲突按规则自动处理，就给成员加上 `@Unique`（见下节）。
+
+## 新增不被覆写成员 @Unique
+
+`@Unique` 声明该成员**绝对不会覆写目标类的任何成员**——它只是 Mixin 自己的新成员。应用时这些成员仍会照常**合并进目标类**（其他 Mixin 也可用 `@Shadow` 引用）；但与目标类已有成员**重名**时，Mixin 不会去覆写目标实现，而是按可见性自动处理冲突（详见[注解参考手册](/developers/mixin/reference/#unique)）：
+
+```java
+@Mixin(SomeClass.class)
+public abstract class Patch {
+    @Unique
+    private int myCounter;   // 新增字段：合并进目标类
+
+    @Unique
+    private void helper() {} // 新增方法：合并进目标类
+}
+```
+
+| 可见性 | 与目标类成员重名时的行为 |
+| ------ | ------------------------ |
+| `private` / `protected` | 自动重命名（如 `helper$md5abc...`），功能保留 |
+| `public` | 直接被丢弃，并打印 WARNING（`@Unique(silent = true)` 可抑制） |
+
+要点：
+
+- **私有/保护成员**重名会自动重命名，一般不用刻意避开目标类的成员名；
+- **公有成员**重名会被丢弃，命名时仍需避开目标类的既有成员名；
+- 给目标类"新增"字段/方法时推荐用它：目标类代码不会重置你的新字段，比 `@Shadow` 改写目标字段更稳妥；
+- 也可以把 `@Unique` 标在类上，让类里所有成员默认都视为 `@Unique`。
+
+## 访问器与调用器
+
+`@Accessor` / `@Invoker` 用**接口**的方式，为目标类的私有字段/方法生成"梯子"：
+
+```java
+@Mixin(SomeClass.class)
+public interface SomeClassAccessor {
+    @Accessor("privateField")
+    int getPrivateField();
+
+    @Accessor("privateField")
+    void setPrivateField(int value);
+
+    @Invoker("privateMethod")
+    void callPrivateMethod();
+}
+```
+
+使用时把它当成普通接口：
+
+```java
+SomeClassAccessor acc = (SomeClassAccessor) someInstance;
+int v = acc.getPrivateField();
+```
+
+- 访问器方法名按 JavaBean 约定自动匹配字段（`getXxx`/`setXxx`），名字对不上时用 `@Accessor("字段名")` 显式指定；
+- `@Invoker` 同理：`@Invoker("方法名")`，方法签名需与目标方法匹配；
+- 纯访问器 Mixin（只含 `@Accessor`/`@Invoker`）写成 **interface**，实现类由 Mixin 自动生成。
+
+## 完全覆写 @Overwrite
+
+`@Overwrite` 用 Mixin 中的方法**整体替换**目标方法：
+
+```java
+@Mixin(Vars.class)
+public abstract class VarsPatch {
+    @Overwrite
+    public static void finishLaunch() {
+        Log.info("replaced finishLaunch!");
+    }
+}
+```
+
+**谨慎使用**：
+
+- 无法看到目标方法的原始实现，一旦游戏更新改动了签名/行为，你的覆写可能破坏游戏；
+- 与其他 Mixin 的 `@Inject` 等注入冲突；
+- 能改用 `@Inject` 就不要用 `@Overwrite`。
+
+> 实际上，在**非混淆环境**（如 Mindustry）中，只要方法签名匹配，Mixin 中的同名方法默认就会覆写目标方法——`@Overwrite` 主要是一个显式声明（并让注解处理器检查）。
+
+## 目标其他模组
+
+Mixin 的目标不限于游戏本体，也可以是**其他已安装的模组**：
+
+```json
+"mixins": {
+  "mindustry:new-horizon": "mixins/nh.json",
+  "test:testmod": "mixins/copper-mod.json"
+}
+```
+
+<Aside type="note" title="Mixin 目标 id">
+	目标 id 是其他模组的完整 id（原版模组为 `mindustry:<模组名>` 形式）。被注入模组的类在**它自己的容器**中解析（见[类隔离机制](/developers/class-visibility/)）。
+</Aside>
+
+## 针对版本的条件注入
+
+游戏不同版本内部实现可能不同。Mixin 配置支持**按目标版本选择**要应用的 Mixin 类（详见[配置 JSON 详解](/developers/mixin/config/)）：
+
+```json
+{
+  "version": 1,
+  "config": {
+    "mixins": {
+      "*": ["CommonPatch"],
+      "<8.0.27179": ["OldVersionPatch"],
+      ">=8.159": ["NewVersionPatch"]
+    }
+  }
+}
+```
+
+## 调试技巧
+
+### 开启 Mixin 日志
+
+```bash
+java -jar CopperLoader.jar -G mindustry.jar --mixin-log example:examplemod
+```
+
+`--mixin-log <模组id>` 为该模组启用审计日志，输出每个 Mixin 的应用情况。
+
+### 导出变换后的类
+
+```bash
+java -jar CopperLoader.jar -G mindustry.jar --mixin-flag example:examplemod,DEBUG_EXPORT
+```
+
+- `--mixin-flag <模组id,标志1,标志2,...>` 设置 Mixin 环境标志；
+- `DEBUG_EXPORT` 会把注入后的类写到工作目录的 `.mixin.out/<容器id>/` 下（可用反编译工具查看）；
+- 其他可用标志见 `org.spongepowered.asm.mixin.MixinEnvironment.Option`。
+
+### 常见报错
+
+| 报错 | 含义 | 处理 |
+| ---- | ---- | ---- |
+| `Unable to resolve mixin ... target class ...` | 找不到目标类 | 检查目标 id/类名是否写对、目标模组是否安装 |
+| `Invalid signature for ... in ...` | 影子成员签名与目标不一致 | 检查 `@Shadow`/`@Invoker` 签名 |
+| `Critical injection failure ...` | 注入点匹配失败（游戏版本变了） | 检查方法名/描述符；用版本过滤拆分支 |
+| `Multiple methods matched ...` | 方法名有重载，无法确定目标 | 补充方法描述符 |
+
+## 下一步
+
+- 把 Mixin 配置与版本过滤玩明白：[配置 JSON 详解](/developers/mixin/config/)
+- 了解本项目 Mixin 与 Minecraft 版的差异（remap、裁剪等）：[与 Minecraft Mixin 的差异](/developers/mixin/copper-differences/)
+- 查看全部注解：[注解参考手册](/developers/mixin/reference/)

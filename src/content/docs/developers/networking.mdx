@@ -1,0 +1,116 @@
+---
+title: 网络数据包
+description: 通过 CopperNet 注册超过 256 个的自定义网络数据包。
+---
+
+Mindustry 原版的 `Net` 系统有一个硬限制：**最多 256 种数据包类型**（数据包 id 在线路上只占一个字节）。而且这 256 个名额**已经被游戏本体自己用了一大半**——游戏内部通信（放置方块、单位操作、聊天等）的包体全部注册在原版 `Net` 上（例如 `mindustry.gen` 下生成的一大批 `*CallPacket` 类），真正留给模组的余量很小，原版模组想加自定义数据包往往捉襟见肘。
+
+Copper 通过一个包装数据包 `ExtendedPacket` 把模组可用的数据包空间扩展到 **65536**（无符号 short），供所有 Copper 模组共享使用。
+
+## 使用方式
+
+### 定义数据包类
+
+自定义数据包继承 `mindustry.net.Packet`，实现 `read` / `write` / `handled` 等方法（与原版自定义数据包完全一致）：
+
+```java
+package example.examplemod.net;
+
+import arc.util.io.Reads;
+import arc.util.io.Writes;
+import mindustry.net.Packet;
+
+public class HelloPacket extends Packet {
+    public String message = "";
+
+    @Override
+    public void write(Writes write) {
+        write.str(message);
+    }
+
+    @Override
+    public void read(Reads read, int length) {
+        message = read.str();
+    }
+
+    @Override
+    public void handled() {
+        // 收到后的处理
+    }
+}
+```
+
+> **参考原版包体：** 游戏自带的网络包体在 `mindustry.gen` 包下（`mindustry.gen` 下的 `*CallPacket` 类，如 `AnnounceCallPacket`）。它们就是标准的 `Packet` 子类，结构与本例一致——`write` 序列化、`read` 缓存字节、`handled` 解包、`handleClient` / `handleServer` 处理、`allow(boolean server)` 决定收发许可。写自己的数据包时，照着这些类的结构来即可。
+
+### 注册数据包
+
+在**主类**中覆写 `registerPackets()`，调用 `CopperNet.registerPacket()`：
+
+```java
+package example.examplemod;
+
+import copper.core.mod.CopperMod;
+import copper.core.net.CopperNet;
+import example.examplemod.net.HelloPacket;
+
+public class ExampleMod extends CopperMod {
+    @Override
+    public void registerPackets() {
+        int id = CopperNet.registerPacket(HelloPacket::new);
+        Log.info("HelloPacket registered with id " + id);
+    }
+}
+```
+
+- `registerPacket(Prov<T>)` 返回分配到的 id，从 0 开始递增；
+- 注册时机：主类实例化之后、游戏 `Mods.load()` 返回时，由核心模组统一调用（见[主类与生命周期](/developers/main-class/)）。
+
+### 发送与接收
+
+发送：把自定义数据包**包装进** `ExtendedPacket` 再交给原版 `Net`：
+
+```java
+import mindustry.Vars;
+import copper.core.net.CopperNet;
+import example.examplemod.net.HelloPacket;
+
+CopperNet.send(new HelloPacket("hi"), true);   // 第二个参数：是否可靠传输
+```
+
+接收：在数据包类的 `handleClient()` / `handleServer()` 中处理：
+
+```java
+@Override
+public void handleClient() {
+    Log.info("client received: " + message);
+}
+
+@Override
+public void handleServer(NetConnection con) {
+    Log.info("server received from " + con.address + ": " + message);
+}
+```
+
+## 工作原理
+
+- `ExtendedPacket` 本身是注册在原版 `Net` 里的**一个**数据包类型，占用了原版 256 个 id 中的 1 个；
+- 在线路上，`ExtendedPacket` 的载荷以 **2 字节的 Copper 子 id** 开头，后面跟着被包装数据包的序列化数据；
+- 接收方根据子 id 还原出对应的自定义数据包实例，再调用其 `read` / `handle*` 方法；
+- 因此，**所有 Copper 模组共享 65536 个扩展 id 空间**，而不是每个模组各 65536 个。
+
+## 注意事项
+
+1. **服务端与客户端都要注册**相同的数据包（否则子 id 对不上）；
+2. 子 id 按**注册顺序**分配：请确保客户端与服务端加载的模组集合一致，或约定好注册顺序；
+3. 自定义数据包的 `allow(boolean server)` 决定其在服务端/客户端的收发许可，按需覆写；
+4. 不要覆写 `getPriority()` 之外的原版行为语义——`ExtendedPacket` 会把优先级等委托给被包装的数据包。
+
+## 相关 API
+
+| 成员 | 说明 |
+| ---- | ---- |
+| `CopperNet.registerPacket(Prov<T>)` | 注册数据包类型，返回子 id |
+| `CopperNet.getPacketId(Packet)` | 查询已注册数据包类型的 id（未注册抛异常） |
+| `CopperNet.newPacket(int id)` | 按 id 创建数据包实例 |
+| `CopperNet.send(Packet, boolean reliable)` | 包装并发送 |
+| `ExtendedPacket` | 包装数据包类（由核心模组自动注册到原版 Net） |

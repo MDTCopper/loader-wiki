@@ -1,0 +1,162 @@
+---
+title: Mixin 配置 JSON 详解
+description: Copper 版 Mixin 配置文件（assets/copper/ 下）的完整语法。
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Copper 的 Mixin 配置**不是**原版 Mixin 的 `mixins.json` 格式。它在原版基础上做了两层改动：
+
+1. 包了一层 `version` / `config`（版本化格式，与 `copper.mod.json` 一致）；
+2. `mixins` 字段从"类名数组"变成了**"版本过滤器 → 类名"的映射**，用于按目标版本选择注入。
+
+## 文件位置与引用
+
+配置文件放在模组 Jar 的 **`assets/copper/`** 下，路径由 `copper.mod.json` 的 `mixins` 字段指定：
+
+```json
+{
+  "version": 1,
+  "meta": {
+    "mixins": {
+      "mindustry": "mixins/mindustry.json"
+    }
+  }
+}
+```
+
+上面的配置引用 Jar 内的 `assets/copper/mixins/mindustry.json`。
+
+## 顶层结构
+
+```json
+{
+  "version": 1,
+  "config": {
+    "required": true,
+    "minVersion": "0.8",
+    "package": "example.examplemod.patch.impl",
+    "mixins": {
+      "*": ["MyPatch", "OtherPatch"]
+    }
+  }
+}
+```
+
+## 字段详解
+
+### version
+
+顶层字段。类型：整数
+
+- 格式版本号，当前为 `1`。非法版本号报错 `mixin config version is not supported`。
+
+### config
+
+顶层字段。类型：对象
+
+- 配置主体，包含下列字段。
+
+### `required`
+
+- 类型：布尔值，默认 `false`
+- 为 `true` 时，如果本配置中的**任何** Mixin 应用失败，加载直接失败（而不是警告）。
+
+### `minVersion`
+
+- 类型：字符串
+- 应用本配置所需的最低 Mixin 框架版本（如 `"0.8"`）。
+
+### `package`
+
+- 类型：字符串
+- Mixin 类所在的**基础包**。`mixins` 中列出的类名都是相对于该包的（只写简单类名）。
+
+```json
+"package": "example.examplemod.patch.impl",
+"mixins": { "*": ["MyPatch"] }
+// 实际类：example.examplemod.patch.impl.MyPatch
+```
+
+### mixins
+
+- 类型：对象（映射：**版本过滤器** → 类名或类名数组）
+- 原版 Mixin 的 `mixins` 是 `["类名", ...]` 数组；Copper 改为按版本过滤：
+
+```json
+"mixins": {
+  "*": ["CommonPatch", "AlwaysPatch"],
+  "<8.0.27179": "BackportPatch",
+  ">=8.159": "ModernPatch"
+}
+```
+
+**行为：**
+
+1. 加载器取目标的版本号（例如游戏版本 `8.159.7`）；
+2. 逐条把键当作版本过滤器（语法与[版本、依赖与冲突](/developers/versions/#semver-过滤器表达式语法)完全一致）进行匹配；
+3. **所有匹配**的条目被合并进一个数组（去重），作为最终生效的 Mixin 列表：
+   - 值为字符串，则加入单个类名；
+   - 值为数组，则逐项加入（去重）。
+4. 合并结果作为原版 Mixin 的 `mixins` 数组传给 Mixin 引擎。
+
+**特殊键 `"*"`**：永远匹配，等价于"所有版本都应用"。
+
+**示例**（来自 Copper 核心模组的实际配置）：
+
+```json
+{
+  "version": 1,
+  "config": {
+    "required": true,
+    "minVersion": "0.8",
+    "package": "copper.core.patch.impl",
+    "mixins": {
+      "*": ["CMods", "CPlatform", "COS", "CVars", "CBeControl", "CVersion", "CServerLauncher"],
+      "<8.0.27179 || (>= 8.1 <8.159)": "CNetBackport",
+      "(>=8.0.27179 <8.1) || >=8.159": "CNet"
+    }
+  }
+}
+```
+
+这里的含义：`CNet` 与 `CNetBackport` 针对不同游戏版本二选一，其余补丁所有版本都应用。这正是版本过滤的典型用法——**针对不同游戏版本维护不同的注入**。
+
+### 原版字段透传
+
+除 `mixins` 外的其他标准 Mixin 配置字段（`priority`、`compatibilityLevel`、`plugin`、`injectors`、`overwrites`、`refmap`、`verbose`、`setSourceFile` 等）会被**原样透传**给 Mixin 引擎，按原版语义生效。
+
+<Aside type="note" title="target 字段通常无需书写">
+	`target` 字段（目标选择器）在本项目中被修改为默认 `@env(DEFAULT)`，通常无需书写（见[与 Minecraft Mixin 的差异](/developers/mixin/copper-differences/)）。
+</Aside>
+
+## 版本过滤器写法速查
+
+键的写法与依赖版本过滤一致（完整语法见[版本、依赖与冲突](/developers/versions/#semver-过滤器表达式语法)）：
+
+| 写法 | 示例 | 含义 |
+| ---- | ---- | ---- |
+| `*` | `"*"` | 总是匹配 |
+| 精确 | `"8.159.7"` | 精确版本 |
+| 通配 | `"8.15*"`、`"8.x"` | 分量通配 |
+| 比较 | `">=8.159"`、`"<8.0.27179"` | 比较 |
+| 区间 | `"8.1 - 8.158"` | 闭区间 |
+| 组合 | `"(>=8.0.27179 <8.1) \|\| >=8.159"` | 与/或/分组 |
+| 字符串回退 | `"some-version"` | 解析失败时按精确字符串匹配 |
+
+## 常见问题
+
+### 配置找到了但一个 Mixin 都没生效
+
+- 确认 `package` + 类名拼出的全限定名与实际类一致；
+- 确认版本过滤器匹配当前目标版本（用 `--mixin-log` 查看，见[入门教程 · 调试技巧](/developers/mixin/intro/#调试技巧)）；
+- 确认目标 id 正确（`mindustry` 或模组 id）。
+
+### 报 `failed to find mixin config in copper assets of mod A`
+
+- 配置文件不存在于 Jar 的 `assets/copper/<配置路径>` 处；
+- 检查打包配置是否把 `res/` 打进了 Jar（见[快速开始](/developers/getting-started/#buildgradle)）。
+
+### 报 `mixin config version is not supported`
+
+- 顶层 `version` 字段缺失或大于 `1`。

@@ -1,40 +1,55 @@
 ---
-title: Welcome to Starlight
-description: Get started building your docs site with Starlight.
-template: splash # Remove or comment out this line to display the site sidebar on this page.
+title: Copper Loader 文档
+description: Copper 模组加载器的官方文档，涵盖安装、使用与模组开发。
+template: splash
 hero:
-  tagline: Congrats on setting up a new Starlight project!
-  image:
-    file: ../../assets/houston.webp
+  tagline: 为 Mindustry 带来 Minecraft 同款 Mixin 热修改能力的模组加载器
   actions:
-    - text: Example Guide
-      link: /guides/example/
-      icon: right-arrow
-    - text: Read the Starlight docs
-      link: https://starlight.astro.build
-      icon: external
-      variant: minimal
+    - text: 玩家快速上手
+      link: /players/install/
+      icon: download
+    - text: 开发者快速开始
+      link: /developers/getting-started/
+      icon: rocket
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-## Next steps
+Copper 是在 Mindustry 官方模组系统基础上扩展的模组加载器。它继承了原版 Java 模组的能力，并额外提供了一套与 Minecraft 同源的 **Mixin 框架**，允许模组在运行时对游戏代码和模组代码进行字节码级热修改，从而做到原版模组做不到的事情。
+
+## 文档结构
 
 <CardGrid stagger>
-	<Card title="Update content" icon="pencil">
-		Edit `src/content/docs/index.mdx` to see this page change.
+	<Card title="玩家指南" icon="open-book">
+		面向玩家与服务器管理员：如何安装 Copper 与模组、如何更新、如何管理模组，以及常见问题的排查方法。
+
+		- [总览](/players/)
+		- [安装](/players/install/)
+		- [更新](/players/update/)
+		- [管理模组](/players/manage-mods/)
+		- [故障排除](/players/troubleshooting/)
 	</Card>
-	<Card title="Change page layout" icon="document">
-		Delete `template: splash` in `src/content/docs/index.mdx` to display a
-		sidebar on this page.
+	<Card title="开发者指南" icon="pencil">
+		面向模组作者。假定你已具备 Mindustry 官方模组开发基础；在此基础上循序渐进地介绍 Copper 的元数据、依赖与版本控制、类隔离机制等新特性。
+
+		- [总览与阅读顺序](/developers/)
+		- [快速开始](/developers/getting-started/)
+		- [模组元数据](/developers/mod-meta/)
+		- [版本、依赖与冲突](/developers/versions/)
+		- [类隔离机制](/developers/class-visibility/)
 	</Card>
-	<Card title="Add new content" icon="add-document">
-		Add Markdown or MDX files to `src/content/docs` to create new pages.
-	</Card>
-	<Card title="Configure your site" icon="setting">
-		Edit your `sidebar` and other config in `astro.config.mjs`.
-	</Card>
-	<Card title="Read the docs" icon="open-book">
-		Learn more in [the Starlight Docs](https://starlight.astro.build/).
+	<Card title="Mixin 专题" icon="shapes">
+		Mixin 的完整入门教程、Copper 版 Mixin 配置语法、与 Minecraft 版的差异，以及注解参考手册。
+
+		- [Mixin 概述](/developers/mixin/)
+		- [入门教程](/developers/mixin/intro/)
+		- [配置 JSON 详解](/developers/mixin/config/)
+		- [注解参考手册](/developers/mixin/reference/)
 	</Card>
 </CardGrid>
+
+## 相关项目
+
+- **Copper Loader**：[github.com/MDTCopper/loader](https://github.com/MDTCopper/loader)
+- **Copper Mixin**（修改版 Mixin）：[github.com/MDTCopper/Mixin](https://github.com/MDTCopper/Mixin)
+- **Mindustry 模组官方文档**：[Mindustry Wiki](https://mindustrygame.github.io/wiki/)

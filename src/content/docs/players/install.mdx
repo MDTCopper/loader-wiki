@@ -1,0 +1,95 @@
+---
+title: 安装
+description: 安装 Java、Mindustry 游戏与 Copper 加载器。
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+本页介绍从零开始安装 Copper 的完整流程。
+
+## 环境要求
+
+| 项目 | 要求 |
+| ---- | ---- |
+| Java | **17 或更高版本**（Copper 的 Mixin 引擎要求 Java 17+） |
+| 操作系统 | Windows / Linux / macOS（桌面平台） |
+| 游戏 | 一个官方 Mindustry 游戏 Jar |
+
+<Aside type="danger" title="Java 版本">
+	Copper **需要 Java 17 及以上**。使用更低版本的 Java 启动会直接失败并抛出 `UnsupportedClassVersionError`（详见[故障排除](/players/troubleshooting/#java-版本问题)）。
+</Aside>
+
+### 检查 Java 版本
+
+在命令行中执行：
+
+```bash
+java -version
+```
+
+输出中的版本号必须不低于 `17`。如果没有 Java 或版本过低，请安装：
+
+- **Windows / macOS**：[Adoptium Temurin](https://adoptium.net/) 下载对应平台的安装包；
+- **Linux**：`sudo apt install openjdk-17-jre`（Debian/Ubuntu）或使用发行版对应的包管理器。
+
+## 安装步骤
+
+<Steps>
+1. **准备游戏 Jar。** Copper 通过命令行参数指定游戏 Jar，因此你需要一个 Mindustry 的 Jar 文件。常见来源：
+
+	- 官方发布的**桌面版 Jar**（例如从 [Mindustry 官方仓库 Release](https://github.com/Anuken/Mindustry/releases) 下载的 `Mindustry-Desktop-xxx.jar`）；
+	- **Bleeding-Edge（BE）构建**（从 [MindustryBuilds](https://github.com/Anuken/MindustryBuilds/releases) 下载）。
+
+	下载后把 Jar 放在一个方便的位置，例如 `C:\copper\mindustry.jar`。
+
+2. **下载加载器。** 从 [MDTCopper/loader 的 Release](https://github.com/MDTCopper/loader/releases) 下载最新版本的 `CopperLoader` Jar（类似 `CopperLoader-xxx.jar`），与游戏 Jar 放在同一个目录。
+
+3. **启动游戏。** 在命令行中进入存放 Jar 的目录，执行：
+
+	```bash
+	java -jar CopperLoader.jar -G mindustry.jar
+	```
+
+	启动时控制台会打印类似下面的日志，表示加载器已初始化：
+
+	```
+	CopperLoader v0.1.0
+	Game info: DESKTOP RELEASE 8.159.7
+	Found N mods.
+	Launching game.
+	```
+
+	<Aside type="tip" title="首次启动">
+		首次启动时，Copper 会在模组文件夹中自动释放**核心模组**（`copper-core.jar`）。不要删除它，它是加载器的组成部分。
+	</Aside>
+</Steps>
+
+## 命令行参数参考
+
+| 参数 | 长参数 | 说明 |
+| ---- | ------ | ---- |
+| `-G <path>` | `--game-jar` | 游戏 Jar 文件路径（必填） |
+| `-D <path>` | `--game-data` | 游戏数据目录（默认 `.mindustry`） |
+| `-d` | `--debug` | 输出调试级日志 |
+| | `--verbose` | 输出更详细的日志 |
+| `-v` | `--version` | 仅显示加载器版本后退出 |
+| | `--mixin-log <modId>` | 为指定模组启用 Mixin 审计日志 |
+| | `--mixin-flag <modId,flag1,...>` | 为指定模组添加 Mixin 环境标志 |
+
+<Aside type="note">
+	`-G`（或 `--game-jar`）指定游戏 Jar 路径，**必须提供**；默认数据目录是当前工作目录下的 `.mindustry`，使用 `-D`（或 `--game-data`）可以指定其他位置，例如：
+
+	```bash
+	java -jar CopperLoader.jar -G mindustry.jar -D ~/.mindustry
+	```
+
+	`--` 之后的参数会原样转发给游戏本体（Mindustry 主类），例如：
+
+	```bash
+	java -jar CopperLoader.jar -G mindustry.jar -- -server
+	```
+</Aside>
+
+## 下一步
+
+安装完成后，前往[管理模组](/players/manage-mods/)了解如何安装模组。

@@ -1,0 +1,2260 @@
+---
+title: Mixin 注解完全参考手册
+description: 基于 SpongePowered Mixin 源码整理的完整注解参考。
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+
+本文档基于 SpongePowered Mixin 源码（`org.spongepowered.asm.mixin` 包），以实例驱动的方式详尽介绍所有注解的用法。
+
+建议在开始之前先查看：
+
+- [Mixin 官方 Wiki](https://github.com/SpongePowered/Mixin/wiki)
+
+-  [Fabric Wiki 的 Mixin 章节](https://wiki.fabricmc.net/zh_cn:tutorial:mixin_introduction)
+
+<Aside type="note" title="关于本文">
+	本文由 AI 生成，但经过人工检查，大体没有问题，仅供参考。
+</Aside>
+
+---
+
+## 目录
+
+- [核心注解](#核心注解)
+- [访问器与调用器注解](#访问器与调用器注解)
+- [注入注解](#注入注解)
+- [注入辅助注解](#注入辅助注解)
+- [回调与参数类](#回调与参数类)
+- [At 注入点类型速查](#at-注入点类型速查)
+
+---
+
+## 核心注解
+
+### @Mixin
+
+定义一个 Mixin 类并指定其目标。
+
+```java
+// 场景1：基本用法 —— 目标类在编译时可见
+@Mixin(TargetClass.class)
+public class MyMixin {
+}
+
+// 场景2：目标类不可见（如内部类、包私有类） —— 使用 targets 字符串
+@Mixin(targets = "net.minecraft.client.render.block.BlockModelRenderer$AmbientOcclusionCalculator")
+public class AmbientOcclusionCalculatorMixin {
+}
+
+// 场景3：同时混入多个类
+@Mixin({Entity.class, Player.class})
+public class MultiTargetMixin {
+}
+
+// 场景4：设置优先级。数值越小越先应用。
+// 如果有两个 Mixin 都往 foo() 的 HEAD 注入，priority=500 的会排在前面
+@Mixin(value = TargetClass.class, priority = 500)
+public class HighPriorityMixin {
+}
+
+// 场景5：混淆环境中启用全局 remap（让注解处理器处理所有 @Shadow/@Overwrite/@Inject 的混淆映射）
+@Mixin(value = TargetClass.class, remap = true)
+public class ObfuscatedMixin {
+}
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `value()` | `Class<?>[]` | `{}` | 目标类。要求编译时可见 |
+| `targets()` | `String[]` | `{}` | 目标类全限定名。用于内部类/包私有类/合成类/`@Pseudo` 类 |
+| `priority()` | `int` | `1000` | 优先级。值越小越先应用 |
+| `remap()` | `boolean` | `false` | 为 `true` 时为所有混淆成员寻找映射 |
+
+> **优先级语义**：低优先级的 Mixin 先应用。对 HEAD 注入，"先应用"排在最前；对 TAIL 注入，"先应用"排在最后。这是"先到先得"语义。
+
+#### Mixin 类的 `extends` 和 `implements` 语义
+
+在理解后续注解之前，需要先明确一条关键规则——Mixin 类自身的 `extends` 和 `implements` 如何作用于目标类（[官方 wiki 原文](https://github.com/SpongePowered/Mixin/wiki/Introduction-to-Mixins---Understanding-Mixin-Architecture#4-only-you-mixins-can-save-mankind)）：
+
+**`implements`**：Any interfaces declared on the mixin are applied to the target class. Mixin 类直接 `implements` 的接口会被添加到目标类上。
+
+**`extends`**：A mixin is expected to extend either the direct superclass of its target class or a superclass within the target class's hierarchy (up to and including `Object`). Mixin 的父类**必须在目标类的继承链中**，否则抛 `InvalidMixinException`。目标类自身的父类不会被改变。
+
+> `extends` 的深层意义：Mixin 类中所有 `super` 调用会在应用时被重定向，确保其语义与"从目标类中写同样的 Java 语句"**完全一致**。例如目标类继承了 `BaseClass`，即使 Mixin 类 extends 的是 `GrandParentClass`，Mixin 中的 `super.someMethod()` 也会被修正为调用目标类实际继承链中正确的那个方法。官方建议尽量让 Mixin 和目标类使用同一个父类，以省去这笔校正开销。
+
+```java
+// implements：Mixin implements IDamageable → 目标类获得 IDamageable
+@Mixin(TargetClass.class)
+public abstract class MyMixin implements IDamageable {
+    public void damage(int amount) { ... }
+}
+
+// extends：Mixin 的父类必须在目标类的继承链中（此处 TargetClass extends BaseEntity）
+@Mixin(TargetClass.class)
+public abstract class MyMixin extends BaseEntity {
+    // super.onUpdate() 会被 Mixin 重定向，确保实际调用 TargetClass 父类链中的 onUpdate
+}
+```
+
+### @Shadow
+
+在 Mixin 中声明一个"影子"成员，用于引用目标类中的私有字段/方法。
+
+```java
+@Mixin(TargetClass.class)
+public abstract class MyMixin {
+    // --- 影子字段 ---
+    // 目标：TargetClass 中 private int health;
+    @Shadow
+    private int health;
+
+    // --- 影子方法 ---
+    // 目标：TargetClass 中 private void onDeath(DamageSource source)
+    @Shadow
+    abstract void onDeath(DamageSource source);
+}
+```
+
+**结果**：Mixin 应用后，`this.health` 和 `this.onDeath()` 直接访问目标类的私有成员，就像它们本来就是 Mixin 的一部分。
+
+#### prefix —— 解决"同名不同返回类型"的编译冲突
+
+```java
+// 问题场景：目标类有个 void doStuff()，Mixin 也想叫 doStuff() 但返回 int
+// Java 不允许两个方法名相同、参数相同但返回值不同！
+// 解决：给影子方法加前缀
+
+@Shadow(prefix = "shadow$")
+abstract void shadow$doStuff();
+//       ^^^^^^^ 应用时会去掉此前缀 → 实际匹配目标类的 doStuff()V
+
+// 在 Mixin 内调用时使用完整方法名
+public int doStuff() {
+    this.shadow$doStuff();  // 调用目标的 void doStuff()
+    return 42;
+}
+```
+
+四种等价写法（按可读性从低到高）：
+```java
+@Shadow abstract void someMethod(int a, int b);                     // ← 不推荐
+@Shadow abstract void shadow$someMethod(int a, int b);              // ← 不够明确
+@Shadow(prefix = "shadow$") abstract void shadow$someMethod(int a, int b); // ← 推荐
+@Shadow(prefix = "myPrefix$") abstract void myPrefix$someMethod(int a, int b);
+```
+
+#### aliases —— 当目标成员名称不确定时
+
+```java
+// 场景：目标类的这个私有字段在不同编译器版本下名字不同
+@Shadow(aliases = {"field_1234_a", "field_5678_b"})
+private int someSyntheticField;
+// Mixin 会按顺序尝试：先匹配 someSyntheticField（混淆映射后），
+// 再尝试 field_1234_a（混淆映射后），最后尝试 field_5678_b
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `prefix()` | `String` | `"shadow$"` | 前缀，应用时从方法名中剥离。字段上使用前缀是错误 |
+| `remap()` | `boolean` | `false` | 是否参与混淆映射 |
+| `aliases()` | `String[]` | `{}` | 别名，仅用于**私有**成员 |
+
+---
+
+### @Overwrite
+
+完全覆写目标类的某个方法。主要用于**混淆环境**——告诉注解处理器"这个方法是用来覆写目标的，请加入混淆映射表"。
+
+```java
+// 场景：目标类有一个 public void tick()，需要完全替换其实现
+@Mixin(TargetClass.class)
+public class MyMixin {
+    @Overwrite
+    public void tick() {
+        // 全新的实现，完全替代目标类的 tick()
+        this.customTick();
+        this.updateState();
+    }
+}
+```
+
+**结果**：目标类中的 `tick()` 方法被 Mixin 中的版本完全替换。
+
+#### 不使用 @Overwrite 的情况
+
+```java
+// 在非混淆开发环境中，只要签名匹配，Mixin 方法默认就会覆写
+// 以下写法效果相同（仅在 mcp/非混淆环境）：
+@Mixin(TargetClass.class)
+public class MyMixin {
+    public void tick() {  // 不加 @Overwrite，照样覆写目标类的 tick()
+        // ...
+    }
+}
+```
+
+#### aliases —— 目标方法名不确定时
+
+```java
+// 目标类的这个方法可能叫 doUpdate 或 updateEntity
+@Overwrite(aliases = {"doUpdate", "updateEntity"})
+private void privateHelper() {
+    // new impl
+}
+```
+
+#### constraints —— 约束条件（运行时安全校验）
+
+`constraints` 是一种**运行时安全网**：它在 Mixin 应用时从环境获取 token 值，与声明的范围比较，不满足就抛 `ConstraintViolationException`，阻止 Mixin 应用。
+
+**语法**：`TOKEN(约束范围)`
+
+```
+格式:  TOKEN(约束)           → 值等于约束值
+       TOKEN(约束+)          → 值大于等于约束值（也可以用 TOKEN(约束>)或 TOKEN(约束-)）
+       TOKEN(<约束)          → 值小于约束值
+       TOKEN(<=约束)         → 值小于等于约束值
+       TOKEN(>约束)          → 值大于约束值
+       TOKEN(>=约束)         → 值大于等于约束值（也可以用 TOKEN(约束+)）
+       TOKEN(下限-上限)      → 值在范围内（含两端）
+       TOKEN(基数+偏移)      → 值在 基数 到 基数+偏移 范围内
+       TOKEN()               → token 必须存在，但可以为任意值
+```
+
+多个约束用分号 `;` 分隔，表示**全部都要满足**（AND）。
+
+**可用的内置 Token**：
+
+Mixin 本身不提供固定的内置 token 列表。Token 来自：
+1. **`IEnvironmentTokenProvider`** 实现类：通过配置文件/Manifest 注册的第三方 token provider
+2. **`internalTokens`**：Mixin 运行时内部填充的 token
+
+常见的环境 token（取决于运行平台和已注册的 Provider）：
+
+| Token | 来源 | 含义 |
+|-------|------|------|
+| `JAVA` | 运行时 | Java 主版本号（8, 11, 17, ...） |
+
+**实例**：
+
+```java
+// 要求 Java 版本 >= 16（主版本号 16+）
+@Overwrite(constraints = "JAVA(16+)")
+public void modernFeature() { }
+
+// 要求 Java 版本恰好为 17
+@Inject(method = "foo()V", at = @At("HEAD"), constraints = "JAVA(17)")
+private void java17Only(CallbackInfo ci) { }
+
+// 要求在 Java 11-17 之间（含）
+@Inject(method = "bar()V", at = @At("HEAD"), constraints = "JAVA(11-17)")
+private void java11to17(CallbackInfo ci) { }
+
+// 要求 Java >= 8（即几乎所有现代 JVM）
+@Redirect(method = "legacy()V", at = @At(value = "INVOKE", target = "La/b/C;oldMethod()V"),
+          constraints = "JAVA(8+)")
+private int newMethod() { return 0; }
+
+// 多个约束：全部满足才行
+@Overwrite(constraints = "JAVA(17+);MY_MOD_VERSION(200+)")
+public void needsBoth() { }
+```
+
+**注册自定义 Token Provider**：
+
+```java
+// 实现接口
+public class MyTokenProvider implements IEnvironmentTokenProvider {
+    @Override
+    public int getPriority() { return DEFAULT_PRIORITY; }
+
+    @Override
+    public Integer getToken(String token, MixinEnvironment env) {
+        if ("MY_MOD_VERSION".equals(token)) {
+            return MyMod.getBuildNumber();  // 返回当前 mod 的构建号
+        }
+        return null;  // 不认识就返回 null
+    }
+}
+
+// 注意：目前版本的 copper 并未实现 TokenProvider，如需版本控制，请使用 mixin 配置文件中的 版本过滤语义
+//       以下两种方法都不会生效
+
+// 通过 manifest 注册（Maven/Gradle 的 MANIFEST.MF 中）：
+// MixinTokenProviders: com.example.MyTokenProvider
+
+// 或代码中注册：
+MixinEnvironment.getDefaultEnvironment()
+    .registerTokenProvider(new MyTokenProvider());
+```
+
+**约束失败时的行为**：
+```
+ConstraintViolationException: Token 'JAVA' has a value (8)
+which is less than the minimum value 16 in ...
+```
+Mixin 应用失败，对应被保护的代码不会注入。这确保了"这个 Mixin 只在特定条件下启用"的安全检查。
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `constraints()` | `String` | `""` | 约束表达式 |
+| `aliases()` | `String[]` | `{}` | 别名，仅用于**私有**方法 |
+| `remap()` | `boolean` | `false` | 是否参与混淆映射 |
+
+---
+
+### @Unique
+
+声明某个 Mixin 成员**绝对不会**覆写目标类的任何成员。当有命名冲突时，根据可见性执行不同的策略。
+
+```java
+// 场景1：辅助方法 —— 只是 Mixin 内部用的工具方法
+@Mixin(TargetClass.class)
+public class MyMixin {
+    @Unique
+    private int calculateOffset(int base, int factor) {
+        return base + factor * 3;
+    }
+
+    @Inject(method = "tick()V", at = @At("HEAD"))
+    private void onTick(CallbackInfo ci) {
+        this.offset = this.calculateOffset(this.base, 10);  // 内部使用
+    }
+}
+```
+
+#### 不同可见性的冲突行为
+
+```java
+// private 方法冲突 → 自动重命名
+@Unique
+private void helper() { }
+// 如果目标类也有 helper() → helper() 被重命名为 helper$md5abc... 避免冲突
+
+// public 方法冲突 → 丢弃（并发出警告）
+@Unique
+public void getThing() { }
+// 如果目标类也有 getThing() → 此方法直接丢弃，日志 WARNING
+// silent=true 可以抑制警告
+
+@Unique(silent = true)
+public void getThing2() { }
+// 丢弃且不产生警告
+```
+
+#### 整个类全部标记为 @Unique
+
+```java
+@Unique
+@Mixin(TargetClass.class)
+public class MyMixin {
+    // 所有成员默认都是 @Unique
+    private void helper1() { }
+    private int getValue() { return 0; }
+}
+```
+
+#### 在 @Implements 中按接口设置
+
+```java
+@Implements(@Interface(iface = SomeInterface.class, prefix = "soft$", unique = true))
+// 实现 SomeInterface 的所有方法都视为 @Unique
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `silent()` | `boolean` | `false` | 仅 public 方法有效。`true` 时冲突丢弃不报警告 |
+
+| 可见性 | 冲突时的行为 |
+|--------|-------------|
+| **public** | 方法被**丢弃**，产生 WARNING（`silent=true` 可抑制） |
+| **private / protected** | 方法被**重命名**，保留功能 |
+
+---
+
+### @Final
+
+两种完全不同的用途：
+
+#### 用途1：保护 Shadow 字段不被意外写入
+
+```java
+@Mixin(TargetClass.class)
+public class MyMixin {
+    @Shadow
+    @Final       // 声明"此字段不应在本 Mixin 中被修改"
+    private int maxHealth;
+
+    @Inject(method = "damage(I)V", at = @At("HEAD"))
+    private void onDamage(int amount, CallbackInfo ci) {
+        if (this.health - amount <= 0) {
+            this.maxHealth = 0;  // ← ERROR: @Final 字段被写入了！
+        }
+    }
+}
+// 在 DEBUG_VERIFY 模式下会直接抛出 InvalidMixinException
+```
+
+#### 用途2：控制回调在链中的执行顺序
+
+```java
+@Mixin(TargetClass.class)
+public class MyMixin {
+    @Final  // 等价于将本方法的 priority 设为 Integer.MAX_VALUE
+    @Inject(method = "tick()V", at = @At("RETURN"), cancellable = true)
+    private void onTick(CallbackInfoReturnable<Integer> cir) {
+        // 排在回调链最后，cir.setReturnValue() 是最终决定
+    }
+}
+```
+
+`@Final` 将本方法的 priority 设为 `Integer.MAX_VALUE`，使其在回调链中排在**最后**。实际效果取决于注入点：
+
+| 注入点 + cancellable | priority 小（排前面） | priority = MAX（排最后） |
+|----------------------|----------------------|--------------------------|
+| HEAD + cancellable | 先执行，`cancel()` 可跳过后续所有回调 | **最后执行，最容易被前面的 `cancel()` 跳过** |
+| RETURN + cancellable | 先拿到返回值，但 `setReturnValue()` 可能被后续覆盖 | 最后拿到返回值，`setReturnValue()` 是谁都无法推翻的最终决定 |
+| 非 cancellable | 副作用先执行 | 副作用在所有人之后执行 |
+
+例如，两个 priority 相同的 Mixin 同时向 `active()Z` 的 HEAD 注入 cancellable 回调，生成的字节码如下：
+
+```java
+public boolean active() {
+    CallbackInfoReturnable ci1 = new CallbackInfoReturnable("active", true);
+    this.handler$zze000$onActive(ci1);       // 排前面的回调
+    if (ci1.isCancelled()) {
+        return ci1.getReturnValueZ();         // zze000 cancel 了，直接返回
+    } else {
+        CallbackInfoReturnable ci2 = new CallbackInfoReturnable("active", true);
+        this.handler$zzh001$onActive(ci2);   // 排后面的回调（相当于 @Final 的效果）
+        if (ci2.isCancelled()) {
+            return ci2.getReturnValueZ();
+        } else {
+            return Version.type.equals("bleeding-edge") && !Vars.steam;
+        }
+    }
+}
+```
+
+排前面的 zze000 一旦 `cancel()`，排在后面的 zzh001 根本没机会执行。对 HEAD + cancellable 来说，`@Final`（= 排最后）是劣势，不是优势。
+
+---
+
+### @Mutable
+
+声明"虽然目标字段是 `final` 的，但我确实需要修改它"。
+
+```java
+// 场景：目标类有 private final int maxStackSize = 64;
+// 我需要修改它
+@Mixin(TargetClass.class)
+public class MyMixin {
+    @Shadow
+    @Final     // 表明此字段原本是 final 的
+    @Mutable   // 但我需要修改它
+    private int maxStackSize;
+
+    @Inject(method = "onLoad()V", at = @At("HEAD"))
+    private void adjustStackSize(CallbackInfo ci) {
+        this.maxStackSize = 999;  // 因为有 @Mutable，所以允许
+    }
+}
+```
+
+**结果**：目标类中 `maxStackSize` 的 `final` 修饰符被移除，Mixin 可以正常写入。
+
+<Aside type="note" title="JRE 9+ 下尤为重要">
+	JVM 会检查 `private final` 字段的修改，`@Mutable` 确保字节码合法。
+</Aside>
+
+---
+
+### @Intrinsic
+
+处理"接口软实现方法是否覆写已有方法"的微妙场景。
+
+#### 场景1：displace=false（默认）—— 不覆盖已有的
+
+```java
+// 背景：Mixin 需要给目标类添加 SomeInterface 接口
+// SomeInterface 有个方法 getDisplayName()
+// 目标类其实已经有 getDisplayName() 方法了（只是没有声明 implements SomeInterface）
+
+@Shadow public String getDisplayName();  // 影子引用目标类已有的方法
+
+@Intrinsic  // displace=false：如果目标类已有 getDisplayName()，则不合并此方法
+public String soft$getDisplayName() {
+    return "[" + this.getDisplayName() + "]";
+}
+```
+
+**结果**：
+- **目标类已有 getDisplayName()**：Mixin 中的 `soft$getDisplayName()` **不会**被合并到目标。目标类直接通过 `SomeInterface` 继承自有的 `getDisplayName()`。
+- **目标类没有 getDisplayName()**：Mixin 的方法去掉前缀后被合并，代理 Shadow 调用。
+
+#### 场景2：displace=true —— 替换但保留原始调用
+
+```java
+// 目标类已有 getDisplayName() 返回 "Player"
+// Mixin 想增强它，但旧代码仍可能通过其他路径调用原始版本
+
+@Shadow public String getDisplayName();
+
+@Intrinsic(displace = true)
+public String soft$getDisplayName() {
+    // this.getDisplayName() 实际调用的是目标类原始版本（已被重命名保留）
+    return "[VIP] " + this.getDisplayName();
+}
+```
+
+**结果**（displace=true）：
+- 目标类的原始 `getDisplayName()` 被重命名为 `getDisplayName$original$...`
+- Mixin 中的方法成为新的 `getDisplayName()`
+- Mixin 方法**内部**对 `this.getDisplayName()` 的调用被重定向到保留的原始版本
+- **外部**代码调用 `getDisplayName()` 将执行新的增强逻辑
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `displace()` | `boolean` | `false` | `true` = 替换已有方法，内部引用指向原始版本 |
+
+---
+
+### @Implements / @Interface
+
+`@Implements` 和直接 `implements` 对目标类的效果完全相同——都让目标类获得接口。官方 wiki 明确指出：soft implementation provides **exactly the same capabilities** as having a mixin directly implement an interface。区别在于 `@Implements` 额外提供了 `prefix`、`remap`、`unique` 等控制能力。
+
+> **"软实现"（soft implementation）**：目标类在源码层面并没有声明该接口，而是由 Mixin 在字节码层面织入 `implements` 子句——运行时可 `instanceof` 该接口并拥有对应方法。这和 Java 原生编译时的"硬实现"相对。无论通过 `implements` 关键字还是 `@Implements` 注解，都是"软实现"。
+
+#### 什么时候需要 `@Implements` 而非直接 `implements`？
+
+[官方 wiki](https://github.com/SpongePowered/Mixin/wiki/Introduction-to-Mixins---Resolving-Method-Signature-Conflicts) 给出的典型场景：目标类的父类中已有同名同参方法，但**返回类型与接口要求的不同**——JVM 支持这种重载但 Java 语言不允许，直接 `implements` 无法编译。
+
+**场景1：返回类型冲突**
+
+```java
+// 目标类的父类 Bar 已有 int getID()，接口要求 UUID getID() → 返回类型不同，编译冲突
+@Mixin(Bar.class)
+@Implements(@Interface(iface = Identifyable.class, prefix = "ident$"))
+public abstract class MixinBar extends Foo {
+    public UUID ident$getID() {       // 编译时叫 ident$getID，避免与父类的 int getID() 冲突
+        return this.id;               // 应用时去掉前缀 → 目标类中注册为 Identifyable.getID()
+    }
+}
+```
+
+> 如果父类方法是 `void damage(int)`，接口要求的也是 `void damage(int)`，签名完全相同，直接 `implements` 即可编译，不需要 `@Implements`。只有 JVM 支持而 Java 编译器不允许的情况（返回类型不同的重载）才需要 prefix 绕过。
+
+**场景2：同时实现多个接口，方法签名冲突**
+
+```java
+// IDrawable.draw() 和 IPaintable.draw() 签名相同但语义不同
+@Mixin(TargetClass.class)
+@Implements({
+    @Interface(iface = IDrawable.class, prefix = "draw$"),
+    @Interface(iface = IPaintable.class, prefix = "paint$")
+})
+abstract class MyMixin {
+    public void draw$draw() { ... }    // → IDrawable.draw()
+    public void paint$draw() { ... }   // → IPaintable.draw()
+}
+```
+
+#### 带 unique 的接口实现
+
+```java
+@Implements(@Interface(iface = IDamageable.class, prefix = "mixin$", unique = true))
+// 所有用 mixin$ 前缀实现的方法都自动视为 @Unique
+// 如果目标类已有同名方法 → 不会冲突
+```
+
+#### remap 策略
+
+```java
+// 强制混淆：接口方法必须找到混淆映射，否则编译报错
+@Implements(@Interface(iface = IDamageable.class, prefix = "mixin$", remap = Interface.Remap.FORCE))
+
+// 只预处理带前缀的方法
+@Implements(@Interface(iface = IDamageable.class, prefix = "mixin$", remap = Interface.Remap.ONLY_PREFIXED))
+
+// 完全不混淆
+@Implements(@Interface(iface = IDamageable.class, prefix = "mixin$", remap = Interface.Remap.NONE))
+```
+
+`@Interface` 参数：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `iface()` | `Class<?>` | （必填） | 要实现的接口 |
+| `prefix()` | `String` | （必填） | 前缀，必须以 `$` 结尾 |
+| `unique()` | `boolean` | `false` | 所有实现方法视为 `@Unique` |
+| `remap()` | `Remap` | `Remap.ALL` | 重映射策略 |
+
+---
+
+### @Dynamic
+
+标记一个注入/覆写的目标在原始类中**不存在**（由其他 mod 运行时添加或修改），仅供文档和调试目的。
+
+```java
+@Mixin(TargetClass.class)
+public class MyMixin {
+    // 场景1：某个 mod 在运行时给 TargetClass 添加了 bar() 方法
+    @Dynamic("Method Foo.bar is added at runtime by ExampleMod")
+    @Inject(method = "bar()V", at = @At("HEAD"))
+    private void onBar(CallbackInfo ci) {
+        // 如果 bar() 不存在，注入失败时的错误信息会包含上面的描述
+    }
+
+    // 场景2：上游 Mixin 添加的字段，可以直接引用那个 Mixin
+    @Dynamic(mixin = SomeOtherMixin.class)
+    @Shadow
+    private int addedField;
+
+    // 场景3：已知某个 Transformer 修改了方法调用
+    @Dynamic("All calls to Foo.bar are replaced at runtime by SomeTransformer with Baz.flop")
+    @Redirect(method = "doStuff()V",
+              at = @At(value = "INVOKE", target = "LBaz;flop()V"))
+    private void onFlop() { }
+}
+```
+
+> 这个注解没有任何运行时语义效果。纯粹用于：1) IDE 工具识别目标可能不存在 2) 注入失败时提供更清晰的错误信息。
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `value()` | `String` | `""` | 描述文字，注入失败时出现在错误信息中 |
+| `mixin()` | `Class<?>` | `void.class` | 上游 Mixin 引用，提供 IDE 导航 |
+
+---
+
+### @Debug
+
+调试辅助：强制导出或打印 Mixin 的目标类。
+
+```java
+// 场景：正在调试某个 Mixin，想看应用后的完整字节码
+@Debug(export = true)   // 强制导出目标类到 .mixin.out/
+@Mixin(TargetClass.class)
+public class MyMixin {
+
+    @Debug(print = true)  // 在控制台打印此方法应用后的字节码
+    @Inject(method = "foo()V", at = @At("HEAD"))
+    private void injected(CallbackInfo ci) {
+        this.doStuff();
+    }
+}
+```
+
+**需要的 JVM 参数**：
+- `-Dmixin.debug.export=true` → 全局导出所有目标类
+- `-Dmixin.debug.export.decompile=true` → 导出时反编译（需要 FernFlower 在 classpath）
+- `-Dmixin.debug.verbose=true` → 启用 `print = true` 功能
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `export()` | `boolean` | `false` | 仅用于**类**。强制导出 |
+| `print()` | `boolean` | `false` | 打印字节码到控制台（需开启 `mixin.debug.verbose`） |
+
+---
+
+### @Pseudo
+
+目标类在**编译时不可用**（甚至运行时也可能不存在）。注解处理器（AP）用已知的父类信息来模拟目标。
+
+```java
+// 场景：要混入 com.example.othermod.SecretGuiScreen
+// 这个类来自另一个你无法依赖的 mod
+
+@Pseudo
+@Mixin(targets = "com.example.othermod.SecretGuiScreen", priority = 1001)
+public abstract class SecretGuiScreenMixin extends GuiScreen {
+    // 必须继承已知的父类 GuiScreen（或至少包含混淆方法的父类）
+    // 因为 AP 需要通过父类层级来解析混淆方法
+
+    @Inject(method = "initGui()V", at = @At("HEAD"))
+    private void onInitGui(CallbackInfo ci) {
+        // initGui 是从 GuiScreen 继承的混淆方法 → AP 可以通过父类解析
+    }
+
+    // 如果 SecretGuiScreen 自身有混淆的方法（非继承的）：
+    @Overwrite(aliases = {"func_12345_a"})  // 必须手动提供混淆别名！
+    private void customMethod() { }
+}
+```
+
+<Aside type="caution" title="关键约束">
+	如果目标自己声明的混淆方法既不在父类中也不在接口中，必须手动用 `aliases` 提供混淆名。
+</Aside>
+
+---
+
+### @SoftOverride
+
+标记一个方法覆盖了**其他 Mixin** 注入到目标类父类链中的方法。源码注释原话：*Decorator for methods which override a method in a supermixin which the containing mixin does not directly extend*。
+
+#### 场景：两个不相关的 Mixin，共享同一个类继承链
+
+```java
+// MixinEntityLiving 给 EntityLiving 注入了一个新方法 onTick()
+@Mixin(EntityLiving.class)
+public abstract class MixinEntityLiving extends Entity {
+    public void onTick() {
+        // 所有 EntityLiving 子类的默认 onTick 逻辑
+    }
+}
+
+// MixinEntityPlayer 给 EntityPlayer（extends EntityLiving）注入逻辑
+// 它 extends EntityLiving（在目标类的继承链中）
+@Mixin(EntityPlayer.class)
+public abstract class MixinEntityPlayer extends EntityLiving {
+
+    @SoftOverride  // 替代 @Override：覆盖的不是 EntityLiving 原生方法，而是其他 Mixin 注入的
+    public void onTick() {
+        super.onTick();  // 调用"虚构父类"中的 onTick，即 MixinEntityLiving 注入的那个
+        this.playerSpecificLogic();
+    }
+}
+```
+
+`MixinEntityPlayer extends EntityLiving`，而 `onTick()` 是 `MixinEntityLiving` 注入到 `EntityLiving` 的。由于 `MixinEntityPlayer` 并不直接 `extends MixinEntityLiving`，Java 编译器不知道 `onTick()` 的存在——`@Override` 会报错，`@SoftOverride` 告诉 Mixin："目标类的父类链中确实有这个方法（是其他 Mixin 注入的），允许覆盖。"
+
+`super.onTick()` 的调用由 Mixin 通过 **imaginary super** 机制处理——Mixin 会找到目标类父类链中由其他 Mixin 注入的该方法，将调用重定向到正确的位置。
+
+#### 验证规则（源码 `MixinTargetContext.validateMethod`）
+
+| 规则 | 说明 |
+|------|------|
+| 不能是 `private` | `@SoftOverride` 方法必须非私有 |
+| 目标类父类链中必须有同名同签名方法 | 在 `targetClassInfo` 的父类链中查找（`SUPER_CLASSES_ONLY`） |
+| 找到的方法必须是 Mixin 注入的 | `isInjected() == true`，不能是目标类原生的方法 |
+
+---
+
+## 访问器与调用器注解
+
+### @Accessor
+
+快速生成获取/设置目标类私有字段的方法。比 `@Shadow` + 手动写 getter/setter 更方便。
+
+```java
+// 场景：目标类有 private int experience;
+
+@Mixin(TargetClass.class)
+public interface TargetAccessor {
+    // Getter —— 方法名自动推断字段名
+    @Accessor
+    int getExperience();
+    // ↑ Mixin 生成: return this.experience;
+
+    // Setter
+    @Accessor
+    void setExperience(int value);
+    // ↑ Mixin 生成: this.experience = value;
+
+    // 手动指定字段名（方法名与字段名不一致时）
+    @Accessor("experience")
+    int fetchXP();
+}
+```
+
+**结果**：Mixin 自动生成 getter/setter 方法体，就像你写了一个 `@Shadow` + 手动实现。
+
+#### 方法名推断规则
+
+```java
+// get + 首字母大写字段名 → getter
+@Accessor  int getHealth();      // → 字段: health
+
+// set + 首字母大写字段名 → setter
+@Accessor  void setHealth(int);  // → 字段: health
+
+// is + 首字母大写字段名 → boolean getter
+@Accessor  boolean isAlive();    // → 字段: alive
+
+// 无法推断 → 必须手动指定
+@Accessor("health")  int grabHealth();  // 显式指定字段名
+```
+
+#### Accessor Mixin（仅含 @Accessor 和 @Invoker 的纯接口 Mixin）
+
+```java
+@Mixin(TargetClass.class)
+public interface TargetAccessors {
+    @Accessor
+    int getPrivateField();
+
+    @Accessor
+    void setPrivateField(int value);
+
+    @Invoker
+    void callPrivateMethod(int arg);
+}
+
+// 外部使用 —— 直接强转，无需 Duck 接口
+TargetClass target = ...;
+TargetAccessors accessor = (TargetAccessors) target;
+int val = accessor.getPrivateField();
+accessor.setPrivateField(42);
+accessor.callPrivateMethod(10);
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `value()` | `String` | `""` | 目标字段名。空 = 从方法名推断 |
+| `remap()` | `boolean` | `false` | 是否混淆映射 |
+
+---
+
+### @Invoker
+
+生成调用目标类私有方法的代理方法。
+
+```java
+// 场景：目标类有 private List<Item> getDrops() 和 private Target(String name)
+
+@Mixin(TargetClass.class)
+public interface TargetInvokers {
+    // 调用实例方法 —— 方法名自动推断
+    @Invoker
+    List<Item> callGetDrops();
+    // ↑ Mixin 生成: return this.getDrops();
+    // "call" 前缀被去掉 → 实际调用 getDrops()
+
+    // 手动指定方法名
+    @Invoker("getDrops")
+    List<Item> fetchDrops();
+
+    // 调用构造函数
+    @Invoker("<init>")
+    TargetClass createTarget(String name);
+    // ↑ Mixin 生成: return new TargetClass(name);
+
+    // invoke 前缀也支持
+    @Invoker
+    void invokePrivateHelper(int x);
+    // ↑ 实际调用 privateHelper(x)
+}
+```
+
+**结果**：
+```java
+// Mixin 生成的代码等价于：
+public List<Item> callGetDrops() {
+    return this.getDrops();  // 直接调用私有方法
+}
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `value()` | `String` | `""` | 目标方法名。`"<init>"` = 构造函数。空 = 从方法名推断 |
+| `remap()` | `boolean` | `false` | 是否混淆映射 |
+
+命名推断规则：
+- `call` + 首字母大写 → 去掉 "call" → 剩余部分为方法名
+- `invoke` + 首字母大写 → 去掉 "invoke" → 剩余部分为方法名
+- 其他 → 必须显式指定 `value`
+
+---
+
+## 注入注解
+
+### @Inject
+
+在所有注解中**使用频率最高**。在目标方法的特定位置注入回调（一段自定义代码）。
+
+#### 基础：注入到方法开头（HEAD）
+
+Mixin：
+```java
+@Inject(method = "foo()V", at = @At("HEAD"))
+private void injected(CallbackInfo ci) {
+    doSomething4();
+}
+```
+
+结果：
+```java
+public void foo() {
+    injected(new CallbackInfo("foo", false));
+    doSomething1();
+    doSomething2();
+    doSomething3();
+}
+```
+
+#### 注入到方法末尾（TAIL）
+
+Mixin：
+```java
+@Inject(method = "foo()V", at = @At("TAIL"))
+private void injected(CallbackInfo ci) {
+    doSomething4();
+}
+```
+
+结果：
+```java
+public void foo() {
+    doSomething1();
+    if (doSomething2()) {
+        return;                    // TAIL 不会注入到这个 return 之前
+    }
+    doSomething3();
+    injected(new CallbackInfo("foo", false));  // 只在最终的"出口"注入
+}
+```
+
+TAIL vs RETURN 的关键区别：TAIL 只在最后一个 return 之前注入一次；RETURN 在**每一个** return 之前注入。
+
+#### 注入到每个返回之前（RETURN）
+
+Mixin：
+```java
+@Inject(method = "foo()V", at = @At("RETURN"))
+private void injected(CallbackInfo ci) {
+    doSomething4();
+}
+```
+
+结果：
+```java
+public void foo() {
+    doSomething1();
+    if (doSomething2()) {
+        injected(new CallbackInfo("foo", false));
+        return;                    // ← 每个 return 前都注入
+    }
+    doSomething3();
+    injected(new CallbackInfo("foo", false));
+    // ← 末尾的 return 前也注入
+}
+```
+
+#### 注入到方法调用之前（INVOKE）
+
+Mixin：
+```java
+@Inject(method = "foo()V",
+    at = @At(value = "INVOKE", target = "La/b/c/Something;doSomething()V"))
+private void injected(CallbackInfo ci) {
+    doSomething3();
+}
+```
+
+结果：
+```java
+public void foo() {
+    doSomething1();
+    Something something = new Something();
+    injected(new CallbackInfo("foo", false));
+    something.doSomething();   // ← 在调用前注入了
+    doSomething2();
+}
+```
+
+#### 注入到方法调用之后（INVOKE + shift=AFTER）
+
+Mixin：
+```java
+@Inject(method = "foo()V",
+    at = @At(value = "INVOKE", target = "La/b/c/Something;doSomething()V",
+             shift = At.Shift.AFTER))
+private void injected(CallbackInfo ci) {
+    doSomething3();
+}
+```
+
+结果：
+```java
+public void foo() {
+    doSomething1();
+    Something something = new Something();
+    something.doSomething();
+    injected(new CallbackInfo("foo", false));  // ← 在调用后注入
+    doSomething2();
+}
+```
+
+#### 用 SHIFT.BY 精确偏移
+
+Mixin：
+```java
+@Inject(method = "foo()V",
+    at = @At(value = "INVOKE", target = "La/b/c/Something;doSomething()V",
+             shift = At.Shift.BY, by = 2))
+private void injected(CallbackInfo ci) {
+    doSomething3();
+}
+```
+
+结果：
+```java
+public void foo() {
+    doSomething1();
+    Something something = new Something();
+    something.doSomething();
+    doSomething2();
+    injected(new CallbackInfo("foo", false));  // ← 偏移 2 条指令
+}
+```
+
+> `by` 可以为负数。建议不要超过 ±3，超过用 `@Slice` 代替。
+
+#### 可取消的注入（cancellable = true）
+
+返回 void 的方法：
+```java
+@Inject(method = "foo()V", at = @At("HEAD"), cancellable = true)
+private void injected(CallbackInfo ci) {
+    if (this.isDead) {
+        ci.cancel();  // 取消 → 直接 return
+    }
+}
+```
+
+结果：
+```java
+public void foo() {
+    CallbackInfo ci = new CallbackInfo("foo", true);
+    injected(ci);
+    if (ci.isCancelled()) return;  // ← 注入器生成的取消检查
+    doSomething1();
+    doSomething2();
+}
+```
+
+返回非 void 的方法：
+```java
+@Inject(method = "foo()I", at = @At("HEAD"), cancellable = true)
+private void injected(CallbackInfoReturnable<Integer> cir) {
+    cir.setReturnValue(3);  // 设置返回值 3 并取消
+}
+```
+
+结果：
+```java
+public int foo() {
+    CallbackInfoReturnable<Integer> cir = new CallbackInfoReturnable<>("foo", true);
+    injected(cir);
+    if (cir.isCancelled()) return cir.getReturnValue();  // 返回 3
+    doSomething1();
+    return 10;
+}
+```
+
+#### 修改返回值（RETURN + cancellable）
+
+Mixin：
+```java
+@Inject(method = "foo()I", at = @At("RETURN"), cancellable = true)
+private void injected(CallbackInfoReturnable<Integer> cir) {
+    cir.setReturnValue(cir.getReturnValue() * 3);
+}
+```
+
+结果：
+```java
+public int foo() {
+    doSomething1();
+    doSomething2();
+    int i = doSomething3() + 7;
+    CallbackInfoReturnable<Integer> cir = new CallbackInfoReturnable<>("foo", true, i);
+    injected(cir);
+    if (cir.isCancelled()) return cir.getReturnValue();
+    return i;
+}
+```
+
+#### 捕获目标方法参数
+
+```java
+// 目标方法: void targetMethod(int x, String name, double value)
+@Inject(method = "targetMethod(ILjava/lang/String;D)V", at = @At("HEAD"))
+private void onCall(int x, String name, double value, CallbackInfo ci) {
+    System.out.println("Called with: " + x + ", " + name + ", " + value);
+}
+```
+
+结果：
+```java
+public void targetMethod(int x, String name, double value) {
+    onCall(x, name, value, new CallbackInfo("targetMethod", false));
+    // 原始方法体...
+}
+```
+
+#### 捕获局部变量
+
+先用 PRINT 模式查看有哪些局部变量：
+```java
+@Inject(method = "foo()V", at = @At(value = "TAIL"), locals = LocalCapture.PRINT)
+private void injected(CallbackInfo ci) {
+    // 不会实际注入，会在控制台打印 LVT 信息
+}
+// 输出类似: "Generated handler signature: (LTypeArg1;)V"
+// 意思是第一个局部变量是 TypeArg1 类型
+```
+
+然后根据打印结果修改签名：
+```java
+@Inject(method = "foo()V", at = @At(value = "TAIL"), locals = LocalCapture.CAPTURE_FAILHARD)
+private void injected(CallbackInfo ci, TypeArg1 arg1) {
+    arg1.doSomething4();
+}
+```
+
+结果：
+```java
+public void foo() {
+    TypeArg1 arg1 = getArg1();
+    arg1.doSomething1();
+    arg1.doSomething2();
+    TypeArg2 arg2 = getArg2();
+    arg2.doSomething3();
+    injected(new CallbackInfo("foo", false), arg1);
+}
+```
+
+#### 用 @Local 注解精确选择同类型中的特定变量
+
+如果方法中有多个同类型的局部变量：
+```java
+public void foo() {
+    TypeArg arg1 = getArg1();  // ordinal=0
+    TypeArg arg2 = getArg2();  // ordinal=1
+    TypeArg arg3 = getArg3();  // ordinal=2 ← 想要这个
+    TypeArg arg4 = getArg4();  // ordinal=3
+    doSomething();
+}
+```
+
+Mixin：
+```java
+@Inject(method = "foo()V", at = @At(value = "TAIL"))
+private void injected(CallbackInfo ci, @Local(ordinal = 2) TypeArg arg) {
+    arg.doSomething4();
+}
+```
+
+结果：
+```java
+public void foo() {
+    // ...
+    injected(new CallbackInfo("foo", false), arg3);  // ← ordinal=2 = arg3
+}
+```
+
+#### 注入到静态初始化块
+
+```java
+@Inject(method = "<clinit>", at = @At("HEAD"))
+private static void injected(CallbackInfo ci) {
+    doSomething3();
+}
+```
+
+结果：
+```java
+static {
+    injected(new CallbackInfo("<clinit>", false));
+    doSomething1();
+    doSomething2();
+}
+```
+
+#### 注入 lambda 表达式
+
+lambda 在字节码里被 javac 编译成两样东西：外层方法中的一条 `invokedynamic` 指令，以及一个 synthetic 方法 `lambda$<外层方法名>$<序号>`，lambda 体就存在这个合成方法里。
+
+**直接注入合成方法（最实用）**：
+
+```java
+// 目标类：
+// public void foo() {
+//     Runnable r = () -> doSomething();
+//     r.run();
+// }
+
+// 注入 javac 生成的合成方法 lambda$foo$0
+@Inject(method = "lambda$foo$0", at = @At("HEAD"))
+private void onLambda(CallbackInfo ci) {
+    // 在 lambda 体执行前运行
+}
+```
+
+lambda 方法就是目标类里的一个普通方法，`method = "lambda$foo$0"` 直接按名字匹配即可（方法名中的 `$` 无需转义）。
+
+**关键坑：方法名不稳定**。`lambda$foo$0` 的序号 `$0` 取决于 lambda 在外层方法中的位置——前面再插一个 lambda，它就变成 `lambda$foo$1`。混淆环境下名字更不可控。稳妥写法是加 `@Dynamic` 提供上下文，用 `aliases` 兜底不同编译产物的名字，并设 `require = 0` 让匹配失败时静默跳过：
+
+```java
+@Dynamic("Lambda in foo() generated by javac")
+@Inject(method = "lambda$foo$0", at = @At("HEAD"), require = 0)
+private void onLambda(CallbackInfo ci) { ... }
+```
+
+> Mixin 内部能识别 `InvokeDynamicInsnNode`（`ElementNode#getSyntheticName()` 专门返回 lambda 实现方法的真实名），但"通过外层方法定位嵌套 lambda 目标"的机制（`TargetSelectors#findNestedTargets`）尚未启用，所以直接注入合成方法仍是主流做法。
+
+#### @Inject 完整参数表
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `id()` | `String` | `""` | 注入器 ID，可通过 `CallbackInfo#getId()` 获取 |
+| `method()` | `String[]` | `{}` | 目标方法选择器（字符串形式） |
+| `target()` | `Desc[]` | `{}` | 目标方法选择器（`@Desc` 形式） |
+| `slice()` | `Slice[]` | `{}` | 方法切片，限定搜索范围 |
+| `at()` | `At[]` | （必填） | 注入点 |
+| `cancellable()` | `boolean` | `false` | 可取消（注入 RETURN opcode） |
+| `locals()` | `LocalCapture` | `NO_CAPTURE` | 局部变量捕获策略 |
+| `remap()` | `boolean` | `false` | 是否混淆映射 |
+| `require()` | `int` | `-1` | 最少成功数，不满足则 `InjectionError` |
+| `expect()` | `int` | `1` | 调试期望数（`DEBUG_INJECTORS` 开启时生效） |
+| `allow()` | `int` | `-1` | 最大允许数 |
+| `constraints()` | `String` | `""` | 约束 |
+| `order()` | `int` | `1000` | 应用顺序（Redirect 默认 10000） |
+
+---
+
+### @At
+
+指定注入点。它是 `@Inject`、`@Redirect`、`@ModifyArg` 等注解中 `at` 参数的值。
+
+```java
+// 快捷形式
+@At("HEAD")
+// 等价于
+@At(value = "HEAD")
+
+// 带 target 的完整形式（注入到指定方法调用前）
+@At(value = "INVOKE", target = "La/b/c/Something;doSomething()V")
+
+// 用 ordinal 选择第 N 个匹配
+@At(value = "INVOKE", target = "La/b/c/Something;doSomething()V", ordinal = 0)
+// ordinal=0 → 第一个匹配的位置，ordinal=2 → 第三个匹配
+
+// 用 @Desc 代替字符串 target
+@At(value = "INVOKE", desc = @Desc(owner = Something.class, value = "doSomething", ret = void.class))
+
+// shift 偏移
+@At(value = "INVOKE", target = "...", shift = At.Shift.AFTER)   // 调用之后
+@At(value = "INVOKE", target = "...", shift = At.Shift.BY, by = 3)  // 偏移3条指令
+```
+
+#### 内置注入点速览
+
+| value | 位置 | 说明 |
+|-------|------|------|
+| `"HEAD"` | 方法第一条指令前 | 最常用的注入位置之一 |
+| `"RETURN"` | 每个 return 前 | 用于清理、日志等 |
+| `"TAIL"` | 方法最终 return 前 | 只注入一次（与 RETURN 不同） |
+| `"INVOKE"` | 方法调用前 | 需要 `target` 参数 |
+| `"INVOKE_ASSIGN"` | 方法调用 + 赋值之后 | 捕获返回值 |
+| `"FIELD"` | 字段访问前 | 需要 `target` + `opcode` |
+| `"NEW"` | new 对象后、构造前 | 对象创建拦截 |
+| `"INVOKE_STRING"` | 以 String 为目标的调用前 | String 特化版本 |
+| `"JUMP"` | 跳转指令前 | 需要 `opcode` |
+| `"CONSTANT"` | 常量加载前 | 配合 `@ModifyConstant` |
+| `"LOAD"` | 局部变量读取前 | 配合 `@ModifyVariable` |
+| `"STORE"` | 局部变量写入后 | 配合 `@ModifyVariable` |
+
+#### At.Shift 枚举
+
+| 值 | 效果 |
+|----|------|
+| `NONE` | 不偏移（默认） |
+| `BEFORE` | 往前偏移 1 条指令 |
+| `AFTER` | 往后偏移 1 条指令 |
+| `BY` | 按 `by` 参数偏移 |
+
+#### unsafe —— 构造器中安全注入
+
+```java
+// 默认情况下很多注入点不能在构造函数中使用（出于安全考虑）
+// 设置 unsafe=true 可以绕过限制，但需要你自己小心
+@At(value = "INVOKE", target = "La/b/Something;doStuff()V", unsafe = true)
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `id()` | `String` | `""` | 注入点 ID，附加到外层 ID 后（`"外层:此id"`） |
+| `value()` | `String` | （必填） | 注入点类型 |
+| `slice()` | `String` | `""` | 引用的 Slice ID |
+| `shift()` | `Shift` | `NONE` | 偏移 |
+| `by()` | `int` | `0` | BY 偏移量 |
+| `args()` | `String[]` | `{}` | 自定义注入点名参数 |
+| `target()` | `String` | `""` | 目标成员描述符 |
+| `desc()` | `Desc` | `@Desc("")` | 类型安全的 target |
+| `ordinal()` | `int` | `-1` | 序数，-1=全部，0=第一个 |
+| `opcode()` | `int` | `-1` | 字节码 opcode |
+| `remap()` | `boolean` | `false` | 是否混淆映射 |
+| `unsafe()` | `boolean` | `false` | 允许构造函数中的非 RETURN 注入 |
+
+---
+
+### @Redirect
+
+用你的方法**替换**目标中的方法调用、字段访问或 new 操作。比 `@Inject` 更底层，可以直接改变程序逻辑。
+
+#### 模式1：重定向方法调用
+
+目标代码：
+```java
+public void foo() {
+    Something something = new Something();
+    int i = something.doSomething(10);  // ← 要重定向这个调用
+    doSomething2();
+}
+```
+
+Mixin：
+```java
+@Redirect(method = "foo()V",
+    at = @At(value = "INVOKE", target = "La/b/c/Something;doSomething(I)I"))
+private int injected(Something something, int x) {
+    return x + 3;  // 完全不调用 doSomething，直接返回修改后的值
+}
+```
+
+结果：
+```java
+public void foo() {
+    Something something = new Something();
+    int i = injected(something, 10);  // ← 被替换为你的方法调用
+    doSomething2();
+}
+```
+
+#### 模式2：重定向字段读取
+
+目标代码：
+```java
+public void foo() {
+    if (this.aaa > doSomething2()) {  // ← 重定向 this.aaa 的读取
+        doSomething3();
+    }
+}
+```
+
+Mixin：
+```java
+@Redirect(method = "foo()V",
+    at = @At(value = "FIELD", target = "La/b/c/Something;aaa:I", opcode = Opcodes.GETFIELD))
+private int injected(Something something) {
+    return 12345;  // 无论 this.aaa 实际是多少，都返回 12345
+}
+```
+
+结果：
+```java
+public void foo() {
+    if (injected(this) > doSomething2()) {  // ← GETFIELD 被替换
+        doSomething3();
+    }
+}
+```
+
+#### 模式3：重定向字段写入
+
+目标代码：
+```java
+public void foo() {
+    this.aaa = doSomething2() + doSomething3();  // ← 重定向这个写入
+}
+```
+
+Mixin：
+```java
+@Redirect(method = "foo()V",
+    at = @At(value = "FIELD", target = "La/b/c/Something;aaa:I", opcode = Opcodes.PUTFIELD))
+private void injected(Something something, int x) {
+    something.aaa = x + doSomething5();  // 修改后再写入
+}
+```
+
+结果：
+```java
+public void foo() {
+    injected(this, doSomething2() + doSomething3());  // ← PUTFIELD 被替换
+}
+```
+
+#### 模式4：字段重定向 —— 四种 OPCODE 的完整签名
+
+| OPCODE | 处理器签名 |
+|--------|-----------|
+| `GETSTATIC` (读静态字段) | `private static FieldType getFieldValue()` |
+| `GETFIELD` (读实例字段) | `private FieldType getFieldValue(OwnerType owner)` |
+| `PUTSTATIC` (写静态字段) | `private static void setFieldValue(FieldType value)` |
+| `PUTFIELD` (写实例字段) | `private void setFieldValue(OwnerType owner, FieldType value)` |
+
+#### 模式5：重定向对象创建（new）
+
+目标代码：
+```java
+public void spawnEnemy() {
+    Enemy e = new Enemy(100, 50);  // ← 拦截这个创建
+    world.spawn(e);
+}
+```
+
+Mixin：
+```java
+@Redirect(method = "spawnEnemy()V",
+    at = @At(value = "NEW", target = "Lcom/game/Enemy;"))
+private Enemy createEnemy(int health, int damage) {
+    if (this.isHardMode) {
+        return new EliteEnemy(health * 2, damage * 2);  // 返回更强大的敌人
+    }
+    return new Enemy(health, damage);
+}
+```
+
+结果：
+```java
+public void spawnEnemy() {
+    Enemy e = createEnemy(100, 50);  // ← new 和构造调用都被替换
+    world.spawn(e);
+}
+```
+
+<Aside type="caution" title="Factory 方法必须返回非 null">
+	Factory 方法**必须返回非 null** 对象。
+</Aside>
+
+#### 模式6：重定向 instanceof
+
+目标代码：
+```java
+if (obj instanceof Foo) {  // ← 重定向这个判断
+    ((Foo) obj).doStuff();
+}
+```
+
+逻辑重定向（返回 boolean）：
+```java
+@Redirect(method = "...",
+    at = @At(value = "INSTANCEOF", target = "LFoo;"))
+public boolean onInstanceOf(Object obj, Class<?> clFoo) {
+    return obj instanceof Bar || obj instanceof Foo;  // 放宽判断条件
+}
+```
+
+类型重定向（返回 Class）：
+```java
+@Redirect(method = "...",
+    at = @At(value = "INSTANCEOF", target = "LFoo;"))
+public Class<?> onInstanceOf(Object obj, Class<?> clFoo) {
+    return Bar.class;  // 用 Bar 替换 Foo 做 instanceof 检查
+}
+```
+
+#### 捕获目标方法的上下文参数
+
+```java
+// 目标方法: foo(String someString, int dx, int dy)
+// 其中调用了: new Foo(dx * 10, dy * 10)
+
+@Redirect(method = "foo(Ljava/lang/String;II)V",
+    at = @At(value = "NEW", target = "LFoo;"))
+private Foo constructFoo(int x, int y, String someString, int dx, int dy) {
+    //                     ^^^^^^^^^^^  └── 目标方法的参数（可选附加）──┘
+    //                     new 的参数
+    System.out.println("Creating Foo for: " + someString);
+    return new Foo(x, y);
+}
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `method()` | `String[]` | `{}` | 目标方法 |
+| `target()` | `Desc[]` | `{}` | 目标方法（`@Desc` 形式） |
+| `slice()` | `Slice` | `@Slice` | 切片 |
+| `at()` | `At` | （必填） | 注入点 |
+| `remap()` | `boolean` | `false` | 是否混淆映射 |
+| `require()` | `int` | `-1` | 最少成功数 |
+| `expect()` | `int` | `1` | 调试期望数 |
+| `allow()` | `int` | `-1` | 最大允许数 |
+| `constraints()` | `String` | `""` | 约束 |
+| `order()` | `int` | `10000` | 应用顺序（默认晚于一般注入器） |
+
+---
+
+### @ModifyArg
+
+修改目标方法中**某个方法调用的单个参数值**。
+
+目标代码：
+```java
+private void targetMethod() {
+    Entity someEntity = this.obtainEntity();
+    float x = 1.0F, y = 3.0F, z = 0.1F;
+    someEntity.setLocation(x, y, z, true);
+    //                      └── 要修改 y (索引 = 1)
+}
+```
+
+Mixin：
+```java
+@ModifyArg(method = "targetMethod()V",
+    at = @At(value = "INVOKE", target = "Lsome/Entity;setLocation(FFFZ)V"),
+    index = 1)
+private float adjustYCoord(float y) {
+    return y + 64.0F;  // y = 3.0 → 67.0
+}
+```
+
+结果：
+```java
+private void targetMethod() {
+    Entity someEntity = this.obtainEntity();
+    float x = 1.0F, y = 3.0F, z = 0.1F;
+    someEntity.setLocation(x, adjustYCoord(y), z, true);
+    //                              ↑ y 被处理器包裹
+}
+```
+
+#### 接收所有参数获取上下文
+
+```java
+@ModifyArg(method = "targetMethod()V",
+    at = @At(value = "INVOKE", target = "Lsome/Entity;setLocation(FFFZ)V"),
+    index = 1)
+private float adjustYCoord(float x, float y, float z, boolean interpolate) {
+    // 可以访问 x, z, interpolate 来做判断
+    if (x == 0 && y == 0) return 0;
+    return y + 64.0F;
+}
+```
+
+#### 不指定 index 时的自动选择
+
+```java
+// 如果目标方法只有一个 int 参数，不用写 index
+@ModifyArg(method = "foo()V",
+    at = @At(value = "INVOKE", target = "LSomeClass;bar(I)V"))
+private int modifyBarArg(int value) {
+    return value * 2;
+}
+// index 自动推断为 0（只此一个 int 参数）
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `index()` | `int` | `-1` | 参数索引（0-based）。-1 = 自动 |
+| `order()` | `int` | `1000` | 应用顺序 |
+
+其他参数 `method`、`target`、`slice`、`at`、`remap`、`require`、`expect`、`allow`、`constraints` 同 `@Inject`。
+
+---
+
+### @ModifyArgs
+
+修改目标方法中**某个方法调用的全部参数**。功能最强但也最耗性能（涉及装箱拆箱）。
+
+目标代码：
+```java
+public void foo() {
+    Something something = new Something();
+    something.doSomething(3, 2.5D, true);
+    //                    └──────────────── 要修改全部三个参数
+}
+```
+
+Mixin：
+```java
+@ModifyArgs(method = "foo()V",
+    at = @At(value = "INVOKE", target = "La/b/c/Something;doSomething(IDZ)V"))
+private void injected(Args args) {
+    int a0 = args.get(0);       // 3
+    double a1 = args.get(1);   // 2.5
+    boolean a2 = args.get(2);  // true
+
+    args.set(0, a0 + 3);       // 3 → 6
+    args.set(1, a1 * 2.0D);    // 2.5 → 5.0
+    args.set(2, !a2);          // true → false
+}
+```
+
+结果：
+```java
+public void foo() {
+    Something something = new Something();
+    Args args = new Args(new Object[] { 3, 2.5D, true });
+    injected(args);
+    something.doSomething(args.get(0), args.get(1), args.get(2));
+    //                           6,           5.0,         false
+}
+```
+
+> 由于装箱拆箱开销，能用 `@ModifyArg` 或 `@Redirect` 时优先用它们。`@ModifyArgs` 的不可替代场景：修改**父类构造函数调用**的参数。
+
+---
+
+### @ModifyVariable
+
+修改目标方法中的**某个局部变量**（包括方法参数）。
+
+目标代码：
+```java
+public void foo(boolean b, int x, int y, int z) {
+    // 想修改 y（第二个 int 参数，ordinal = 1）
+    doSomething1();
+    doSomething2();
+}
+```
+
+Mixin：
+```java
+@ModifyVariable(method = "foo(ZIII)V", at = @At("HEAD"), ordinal = 1)
+private int injected(int y) {
+    return y * 3;
+}
+```
+
+结果：
+```java
+public void foo(boolean b, int x, int y, int z) {
+    y = injected(y);  // y 被处理器包裹修改
+    doSomething1();
+    doSomething2();
+}
+```
+
+#### 使用 STORE 在变量被赋值后立即修改
+
+目标代码：
+```java
+public void foo() {
+    int i0 = doSomething1();       // store ordinal=0 (int)
+    double d0 = doSomething2();    // store ordinal=0 (double)
+    double d1 = doSomething3() + 0.8D;  // store ordinal=1 (double) ← 修改这个
+    double d2 = doSomething4();    // store ordinal=2 (double)
+}
+```
+
+Mixin：
+```java
+@ModifyVariable(method = "foo()V", at = @At("STORE"), ordinal = 1)
+private double injected(double x) {
+    return x * 1.5D;
+}
+```
+
+结果：
+```java
+public void foo() {
+    int i0 = doSomething1();
+    double d0 = doSomething2();
+    double d1 = injected(doSomething3() + 0.8D);  // ← 被包裹
+    double d2 = doSomething4();
+}
+```
+
+#### 使用 LOAD 在变量被读取前修改
+
+```java
+@ModifyVariable(method = "bar()V", at = @At("LOAD"), ordinal = 0)
+private int modifyOnRead(int value) {
+    return value * 2;
+}
+// 在方法内某处读取该变量前，值被修改
+```
+
+#### 用 print 模式查看可用的局部变量
+
+```java
+@ModifyVariable(method = "targetMethod()V", at = @At("HEAD"), print = true)
+private int debug(int value) { return value; }
+// 设置 print=true，不会实际注入，会在控制台打印 LVT
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `print()` | `boolean` | `false` | 打印 LVT，不注入 |
+| `ordinal()` | `int` | `-1` | 按类型的序数。优先于 `index` |
+| `index()` | `int` | `-1` | LVT 绝对索引。优先于 `name` |
+| `name()` | `String[]` | `{}` | 按变量名匹配 |
+| `argsOnly()` | `boolean` | `false` | 只考虑方法参数 |
+| `order()` | `int` | `1000` | 应用顺序 |
+
+---
+
+### @ModifyConstant
+
+修改目标方法中的**常量值**。
+
+目标代码：
+```java
+public void foo() {
+    for (int i = 0; i < 4; i++) {  // ← 常量 4
+        doSomething(i);
+    }
+}
+```
+
+Mixin：
+```java
+@ModifyConstant(method = "foo()V", constant = @Constant(intValue = 4))
+private int injected(int value) {
+    return ++value;  // 4 → 5
+}
+```
+
+结果：
+```java
+public void foo() {
+    for (int i = 0; i < injected(4); i++) {  // 4 → 5
+        doSomething(i);
+    }
+}
+```
+
+#### 修改字符串常量
+
+```java
+@ModifyConstant(method = "sendMessage()V", constant = @Constant(stringValue = "Hello"))
+private String injected(String value) {
+    return "你好";  // 替换所有 "Hello" 为 "你好"
+}
+```
+
+#### 修改 null 常量
+
+```java
+@ModifyConstant(method = "getTarget()Ljava/lang/Object;", constant = @Constant(nullValue = true))
+private Object injected(Object value) {  // value 总是 null
+    return this.defaultTarget;  // 用默认目标替换 null
+}
+```
+
+#### 用 ordinal 精确选择第几个匹配常量
+
+```java
+// 方法中有多个 int 0，只改第三个
+@ModifyConstant(method = "complex()V", constant = @Constant(intValue = 0, ordinal = 2))
+private int injected(int value) {
+    return 999;
+}
+```
+
+#### 修改零值比较（expandZeroConditions）
+
+```java
+// 源代码: if (x >= 0) { ... }
+// 编译后可能是 IFLT（if less than 0）指令，而不是 LDC 0
+// 需要用 expandZeroConditions 来捕获这种"零值比较"指令
+
+@ModifyConstant(method = "checkPositive()V",
+    constant = @Constant(expandZeroConditions = { Constant.Condition.GREATER_THAN_OR_EQUAL_TO_ZERO }))
+private int injected(int value) {
+    return 1;  // 将比较从 >=0 变成 >=1
+}
+// 结果: if (x >= 0) → if (x >= 1)
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `constant()` | `Constant[]` | `{}` | 常量判别器。空 = 匹配所有同类型 |
+| `order()` | `int` | `10000` | 应用顺序 |
+
+---
+
+## 注入辅助注解
+
+### @Slice
+
+将目标方法**切出一个片段**，限制注入点的搜索范围。让注入更精确、更不容易因目标方法变化而出错。
+
+目标方法：
+```java
+private void foo(Bar bar) {
+    bar.update();
+    List<Thing> list = bar.getThings();
+    for (Thing thing : list) {
+        thing.processStuff();            // ← 不想匹配这个 processStuff
+    }
+    Thing specialThing = bar.getSpecialThing();
+    if (specialThing.isReady()) {
+        specialThing.processStuff();     // ← 只想要这个 processStuff
+        bar.update();
+    }
+    bar.notifyFoo();
+}
+```
+
+用 ordinal（脆弱）：
+```java
+// ordinal=1 表示第二个 processStuff。但如果未来有人往方法里
+// 又加了一个 processStuff 调用，ordinal 就变了
+@At(value = "INVOKE", target = "processStuff", ordinal = 1)
+```
+
+用 Slice（健壮）：
+```java
+@Inject(
+    method = "foo(LBar;)V",
+    at = @At(value = "INVOKE", target = "La/b/Thing;processStuff()V"),
+    slice = @Slice(
+        from = @At(value = "INVOKE", target = "La/b/Thing;isReady()Z")
+        // 切片从 isReady() 调用开始（只指定 from，到方法尾结束）
+    )
+)
+private void injected(CallbackInfo ci) {
+    doSomething5();
+}
+```
+
+**Slice 区间语义**：
+- 只指定 `from`：从 `from` 处到方法末尾
+- 只指定 `to`：从方法开头到 `to` 处
+- 同时指定 `from` 和 `to`：从 `from` 到 `to`（两者都要有效，且 `to` 必须在 `from` 之后）
+
+```java
+// 完整示例：两端都指定
+slice = @Slice(
+    from = @At(value = "INVOKE", target = "La/b/c/Something;doSomething2()V"),
+    to   = @At(value = "INVOKE", target = "La/b/c/Something;doSomething3()V")
+)
+```
+
+#### 多个 Slice + 多个 @At
+
+```java
+@Inject(
+    method = "complex()V",
+    slice = {
+        @Slice(id = "beforeInit",
+            to = @At(value = "INVOKE", target = "La/b/Foo;init()V")),
+        @Slice(id = "afterInit",
+            from = @At(value = "INVOKE", target = "La/b/Foo;init()V"))
+    },
+    at = {
+        @At(value = "INVOKE", target = "La/b/Foo;earlyCall()V", slice = "beforeInit"),
+        @At(value = "INVOKE", target = "La/b/Foo;lateCall()V", slice = "afterInit")
+    }
+)
+private void injected(CallbackInfo ci) { }
+// earlyCall 只在 init() 之前查找
+// lateCall 只在 init() 之后查找
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `id()` | `String` | `""` | 切片 ID，在 `@At.slice` 中引用 |
+| `from()` | `At` | `@At("HEAD")` | 切片起始 |
+| `to()` | `At` | `@At("TAIL")` | 切片结束 |
+
+---
+
+### @Constant
+
+`@ModifyConstant` 的常量判别器。
+
+```java
+// 匹配各种常量类型
+@Constant(intValue = 4)                     // 整数 4
+@Constant(floatValue = 3.14F)               // 浮点数 3.14
+@Constant(longValue = 999L)                 // 长整数 999
+@Constant(doubleValue = 2.718)              // 双精度 2.718
+@Constant(stringValue = "hello")            // 字符串 "hello"
+@Constant(classValue = String.class)        // String.class 字面量
+@Constant(nullValue = true)                 // null
+
+// 组合使用：只匹配 int 0 的第三个出现
+@Constant(intValue = 0, ordinal = 2)
+
+// 指定切片
+@Constant(intValue = 1, slice = "afterInit")
+```
+
+#### expandZeroConditions —— 零值比较的特殊处理
+
+Java 源码 `if (x > 0)` 可能被编译为 `IFLE`（if less or equal）指令而非 `LDC 0`。捕获它：
+
+```java
+// 源码: if (count > 0) { doStuff(); }
+
+@ModifyConstant(method = "checkCount()V",
+    constant = @Constant(expandZeroConditions = { Constant.Condition.GREATER_THAN_ZERO }))
+private int onGreaterThanZero(int zero) {
+    return 10;  // 条件变成 if (count > 10)
+}
+```
+
+| Condition | 源码写法 | 也匹配逆 |
+|-----------|---------|---------|
+| `LESS_THAN_ZERO` | `x < 0` | `x >= 0` |
+| `LESS_THAN_OR_EQUAL_TO_ZERO` | `x <= 0` | `x > 0` |
+| `GREATER_THAN_OR_EQUAL_TO_ZERO` | 等价 `LESS_THAN_ZERO` | |
+| `GREATER_THAN_ZERO` | 等价 `LESS_THAN_OR_EQUAL_TO_ZERO` | |
+
+---
+
+### @Desc / @Next
+
+类型安全的成员描述符，替代字符串描述（如 `"La/b/c/Foo;method(II)V"`）。`@Desc` 是 `@Repeatable` 注解，可以放在 Mixin 类、方法或直接在 `@At.desc` / `@Inject.target` 中使用。
+
+#### 基本使用
+
+```java
+// 旧方式（字符串）
+@At(value = "INVOKE", target = "La/b/c/Foo;bar(ILjava/lang/String;)V")
+
+// 新方式（@Desc — 类型安全，IDE 可重构）
+@At(value = "INVOKE", desc = @Desc(owner = Foo.class, value = "bar",
+    ret = void.class, args = {int.class, String.class}))
+```
+
+#### 在 @Inject 中用于选择目标方法
+
+```java
+@Inject(
+    target = @Desc(value = "foo", ret = void.class),
+    // 等价于 method = "foo()V"，owner 默认为当前 Mixin 目标
+    at = @At("HEAD")
+)
+private void injected(CallbackInfo ci) { }
+```
+
+> 仅指定 `value` 时，匹配的是**当前 Mixin 目标中无参、返回 void** 的方法。`owner` 默认 = Mixin 目标类，`ret` 默认 = `void`，`args` 默认 = `{}`（匹配无参方法）。
+
+#### 用 id 定义可复用描述符
+
+`@Desc` 可以写在 Mixin 类或方法上，通过 `id` 被多处引用，id 不区分大小写。也支持**隐式坐标**（implicit coordinates）——省略 id，让 Mixin 根据消费者位置自动搜索匹配的 `@Desc`。
+
+```java
+// 在类上定义一个带 id 的 @Desc
+@Desc(id = "setPos", owner = Entity.class, value = "setPosition",
+    ret = void.class, args = {double.class, double.class, double.class})
+@Mixin(TargetClass.class)
+abstract class MyMixin {
+    @Inject(method = "foo()V", at = @At(value = "INVOKE", desc = @Desc(id = "setPos")))
+    private void handler(CallbackInfo ci) { }
+}
+```
+
+隐式坐标用法——`target = "@Desc"` 不带参数，Mixin 从消费者（`@At`）的坐标 `"at"` 开始向上搜索：
+
+```java
+@Desc(id = "at", value = "theMethodName", args = {String.class}, ret = boolean.class)
+@Inject(method = "targetMethod()V", at = @At(value = "INVOKE", target = "@Desc"))
+private void handler(CallbackInfo ci) { }
+```
+
+#### min / max —— 控制匹配次数的上下限
+
+`min` 和 `max` 限定选择器在目标方法体中**匹配到的指令条数**。当 `@Desc` 用于匹配**方法调用或字段访问**（`@At.desc`）时才有意义——匹配类成员时只有"存在/不存在"两种可能，min/max 设成 0 或 1 以外的值没有意义。
+
+| 设置 | 含义 | 不满足时 |
+|------|------|---------|
+| 默认（min=0, max=MAX） | 不限次数 | — |
+| `min = 1` | 至少匹配 1 次 | 抛出 `SelectorConstraintException` |
+| `min = 2, max = 2` | 恰好匹配 2 次 | 少于 2 次抛异常；超过 2 次停止匹配 |
+
+源码验证逻辑（`TargetSelector.runSelector`）：
+
+```java
+// 遍历目标方法中每条指令，匹配成功则 matchCount++
+if (matchCount > selector.getMaxMatchCount()) break;      // 超过上限 → 停止
+// 循环结束后
+if (matchCount < selector.getMinMatchCount()) throw ...;   // 不满足下限 → 抛异常
+```
+
+```java
+// 目标方法中恰好调用 register() 2 次（用于确保未来代码变更不会破坏匹配）
+@At(value = "INVOKE", desc = @Desc(value = "register", ret = void.class, min = 2, max = 2))
+
+// 至少调用 init() 1 次
+@At(value = "INVOKE", desc = @Desc(value = "init", ret = void.class, min = 1))
+```
+
+#### @Next —— 链式调用匹配
+
+`next` 将多个选择器串联成**指令序列匹配链**。首个 `@Desc` 匹配到一条指令后，Mixin 继续用 `next[0]` 匹配**紧接其后**的指令，`next[0]` 成功再用 `next[1]` 匹配，以此类推——整条链全部连续匹配才算命中。
+
+这是 `ITargetSelector.next()` 的源码语义："Get the next target selector in this path. Called at recurse points in the subject in order to match against the child subject."
+
+```java
+// 匹配方法调用链：builder.name("test").value(42).build()
+@At(value = "INVOKE", desc = @Desc(
+    owner = Builder.class, value = "name", ret = Builder.class,
+    args = {String.class},
+    next = {
+        @Next(name = "value", args = {int.class}, ret = Builder.class),
+        @Next(name = "build", ret = Result.class)
+    }
+))
+```
+
+匹配过程（Mixin 扫描目标方法的字节码指令并按序比对）：
+
+```
+匹配到 name(String) 返回 Builder?
+  → 检查紧接着的下一条是否是 value(int) 返回 Builder?
+      → 检查紧接着的下一条是否是 build() 返回 Result?
+          → 全部连续匹配 → 在此注入！
+```
+
+如果任何一环断裂（如 `name()` 和 `build()` 之间没有 `value()`），整条链匹配失败，Mixin 继续从下一条指令重新尝试。
+
+每个 `@Next` 节点也有自己的 `min`/`max`，但在链式匹配中通常不设——每个递归点只应匹配一次。节点的 `name` 可省略，此时只按 `args` + `ret` 匹配（类似于不限制名称的匹配）。在链式匹配中使用 `ordinal` 时注意：`ordinal` 选择的是**整条链**匹配到的第 N 个实例，而不是单个节点。
+
+`@Desc` 参数：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `id()` | `String` | `""` | 标识符，不区分大小写 |
+| `owner()` | `Class<?>` | `void.class` | 所属类。默认 = 当前 Mixin 目标 |
+| `value()` | `String` | （必填） | 成员名称 |
+| `ret()` | `Class<?>` | `void.class` | 返回/字段类型 |
+| `args()` | `Class<?>[]` | `{}` | 参数类型。**留空 = 匹配无参方法** |
+| `next()` | `Next[]` | `{}` | 链式匹配的下一个选择器 |
+| `min()` | `int` | `0` | 最少匹配指令数。匹配成员时只 0/1 有意义 |
+| `max()` | `int` | `Integer.MAX_VALUE` | 最多匹配指令数。匹配成员时只 1 有意义 |
+
+`@Next` 参数：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `name()` | `String` | `""` | 方法名。空 = 不限制名称，只匹配 args + ret |
+| `ret()` | `Class<?>` | `void.class` | 返回类型 |
+| `args()` | `Class<?>[]` | `{}` | 参数类型 |
+| `min()` | `int` | `0` | 链节点的最少匹配数 |
+| `max()` | `int` | `Integer.MAX_VALUE` | 链节点的最多匹配数 |
+
+---
+
+### @Surrogate
+
+当 `@Inject` 需要注入多个签名不同的目标方法时，声明"替代"处理器来覆盖不同参数类型。
+
+```java
+// 主处理器：捕获 void foo()
+@Inject(method = "foo()V", at = @At("HEAD"))
+private void injected(CallbackInfo ci) {
+    System.out.println("foo() called");
+}
+
+// 替代处理器1：void foo(int) 带 1 个参数
+@Surrogate
+private void injected(int arg, CallbackInfo ci) {
+    System.out.println("foo(" + arg + ") called");
+}
+
+// 替代处理器2：void foo(String, int) 带 2 个参数
+@Surrogate
+private void injected(String arg1, int arg2, CallbackInfo ci) {
+    System.out.println("foo(" + arg1 + ", " + arg2 + ") called");
+}
+```
+
+<Aside type="caution" title="@Surrogate 方法必须同名">
+	所有 `@Surrogate` 方法必须与主处理器**同名**。Mixin 会根据目标方法的实际参数自动选择最匹配的处理器。
+</Aside>
+
+---
+
+### @Group
+
+把多个注入器纳入一个组，统一管理成功率要求。典型场景：多个替代处理器中只需一个成功。
+
+```java
+// 两个注入器，但只需至少 1 个成功（min=1），最多 1 个成功（max=1）
+// 典型用途：多版本兼容 — 注入目标在不同版本中叫法不同
+
+@Group(name = "getHealthCompat", min = 1, max = 1)
+@Inject(method = "getHealth()F", at = @At("HEAD"), cancellable = true)
+private void getHealth_v1(CallbackInfoReturnable<Float> cir) {
+    cir.setReturnValue((float) this.health);
+}
+
+@Group(name = "getHealthCompat", min = 1, max = 1)
+@Inject(method = "getHP()F", at = @At("HEAD"), cancellable = true)
+private void getHealth_v2(CallbackInfoReturnable<Float> cir) {
+    cir.setReturnValue((float) this.health);
+}
+// 如果目标类有 getHealth → v1 成功
+// 如果目标类有 getHP → v2 成功
+// 如果两个都有或都没有 → 报错（不满足 min=1, max=1）
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `name()` | `String` | `""` | 组名 |
+| `min()` | `int` | `-1` | 最少成功数 |
+| `max()` | `int` | `-1` | 最多成功数 |
+
+---
+
+### @Coerce
+
+类型强制，用于绕过可见性或 LVT 推断的限制。
+
+#### 在 @Inject 回调中：将 int 强制为 boolean/short/byte
+
+```java
+// 字节码层面 boolean 就是 int，LVT 可能推断不出来
+@Inject(method = "setFlag(I)V", at = @At("HEAD"))
+private void onSetFlag(@Coerce boolean flag, CallbackInfo ci) {
+    // flag 实际是 int 类型(0/1)，用 @Coerce 强制当 boolean 用
+}
+```
+
+#### 在 @Redirect 中：返回或接收更宽的类型
+
+```java
+// 目标字段类型是包私有的 PrivateType
+@Coerce  // 标注在方法上，允许返回 Object 而不是 PrivateType
+@Redirect(method = "bar()V",
+    at = @At(value = "FIELD", target = "La/b/SomeClass;field:Lbaz/PrivateType;",
+             opcode = Opcodes.GETFIELD))
+private Object getFieldValue(SomeClass owner) {
+    return owner.internalGet();  // 返回 Object 然后被 cast 回 PrivateType
+}
+```
+
+可标注在**参数**上或**方法**（返回类型）上。
+
+---
+
+## 回调与参数类
+
+### CallbackInfo
+
+`@Inject` 回调的第一个（或最后一个，如果有目标参数）参数。提供元信息和取消控制。
+
+```java
+@Inject(method = "target()V", at = @At("HEAD"), cancellable = true)
+private void onTarget(CallbackInfo ci) {
+    // 获取调用信息
+    System.out.println("Injected into: " + ci.getId());
+
+    // 条件取消
+    if (this.shouldSkip) {
+        ci.cancel();
+        return;
+    }
+
+    // 实际逻辑...
+}
+```
+
+| 方法 | 说明 |
+|------|------|
+| `String getId()` | 获取注入器 ID（默认 = 目标方法名，可通过 `@Inject(id = "xxx")` 覆盖） |
+| `boolean isCancellable()` | 此回调是否可取消 |
+| `boolean isCancelled()` | 是否已被取消 |
+| `void cancel()` | 取消回调。不可取消时抛 `CancellationException` |
+
+---
+
+### `CallbackInfoReturnable<R>`
+
+`CallbackInfo` 的子类，用于非 void 返回类型。可以获取和设置返回值。
+
+```java
+@Inject(method = "getValue()I", at = @At("RETURN"), cancellable = true)
+private void modifyValue(CallbackInfoReturnable<Integer> cir) {
+    // 获取原始返回值
+    int original = cir.getReturnValue();
+    // 覆盖
+    cir.setReturnValue(original * 3);
+}
+```
+
+| 方法 | 说明 |
+|------|------|
+| `R getReturnValue()` | 获取当前返回值 |
+| `void setReturnValue(R)` | 设置返回值（同时取消） |
+| `byte getReturnValueB()` | 返回值转 byte |
+| `char getReturnValueC()` | 返回值转 char |
+| `double getReturnValueD()` | 返回值转 double |
+| `float getReturnValueF()` | 返回值转 float |
+| `int getReturnValueI()` | 返回值转 int |
+| `long getReturnValueJ()` | 返回值转 long |
+| `short getReturnValueS()` | 返回值转 short |
+| `boolean getReturnValueZ()` | 返回值转 boolean |
+
+---
+
+### LocalCapture
+
+枚举。控制 `@Inject(locals = ...)` 的行为。
+
+| 值 | 行为 |
+|----|------|
+| `NO_CAPTURE` | 默认。不捕获，最快 |
+| `PRINT` | 不注入，只把期望的签名打印到 STDERR |
+| `CAPTURE_FAILSOFT` | 捕获。失败 → 记录警告、跳过此注入、继续 |
+| `CAPTURE_FAILHARD` | 捕获。失败 → 抛 `Error`，应用崩溃 |
+| `CAPTURE_FAILEXCEPTION` | 捕获。失败 → 生成抛异常的桩方法 |
+
+使用流程建议：
+1. 先用 `PRINT` 运行一次，查看需要什么参数
+2. 复制打印出的签名到你的方法
+3. 改为 `CAPTURE_FAILHARD`（开发期严格报错）
+4. 发布前考虑改为 `CAPTURE_FAILSOFT`（避免因别的 mod 修改 LVT 导致崩溃）
+
+```java
+// 推荐流程
+@Inject(method = "target(Lnet/minecraft/item/ItemStack;)V", at = @At("TAIL"),
+    locals = LocalCapture.PRINT)  // 第一步：打印
+private void injected(CallbackInfo ci) { }
+
+// 控制台输出: "handler method signature: (Lnet/minecraft/item/ItemStack;)V"
+// 意味着第一个局部变量是 ItemStack 类型
+
+// 第二步：改成匹配的签名
+@Inject(method = "target(Lnet/minecraft/item/ItemStack;)V", at = @At("TAIL"),
+    locals = LocalCapture.CAPTURE_FAILHARD)
+private void injected(CallbackInfo ci, ItemStack stack) {
+    // stack 就是目标方法的第一个局部变量
+}
+```
+
+---
+
+### Args
+
+`@ModifyArgs` 回调的参数束。
+
+```java
+@ModifyArgs(method = "sendPacket(Lnet/minecraft/network/Packet;)V",
+    at = @At(value = "INVOKE", target = "Lnet/minecraft/network/NetworkManager;sendPacket(Lnet/minecraft/network/Packet;)V"))
+private void modifyPacket(Args args) {
+    Packet original = args.get(0);
+    Packet modified = this.wrapPacket(original);
+    args.set(0, modified);  // 替换为修改后的 Packet
+}
+```
+
+| 方法 | 说明 |
+|------|------|
+| `int size()` | 参数个数 |
+| `<T> T get(int)` | 获取 |
+| `<T> void set(int, T)` | 设置（原始类型必须精确匹配，不能 null） |
+| `void setAll(Object...)` | 设置全部 |
+
+---
+
+## At 注入点类型速查
+
+| 值 | 类 | 匹配位置 | 常用参数 |
+|----|----|---------|---------|
+| `"HEAD"` | `MethodHead` | 方法第一条指令前 | — |
+| `"RETURN"` | `BeforeReturn` | 每个 RETURN 前 | `ordinal` |
+| `"TAIL"` | `BeforeFinalReturn` | 方法最终 RETURN 前 | — |
+| `"INVOKE"` | `BeforeInvoke` | 方法调用前 | `target`, `ordinal` |
+| `"INVOKE_ASSIGN"` | `AfterInvoke` | 方法调用+赋值后 | `target`, `ordinal` |
+| `"FIELD"` | `BeforeFieldAccess` | 字段访问前 | `target`, `opcode`, `ordinal` |
+| `"NEW"` | `BeforeNew` | NEW 后、构造前 | `target`, `ordinal` |
+| `"INVOKE_STRING"` | `BeforeStringInvoke` | String 目标调用前 | `target`, `ordinal` |
+| `"JUMP"` | `JumpInsnPoint` | JUMP 指令前 | `opcode`, `ordinal` |
+| `"CONSTANT"` | `BeforeConstant` | 常量加载前 | `@Constant` 注解 |
+| `"LOAD"` | `BeforeLoadLocal` | 局部变量 LOAD 前 | `@ModifyVariable` 判别器 |
+| `"STORE"` | `AfterStoreLocal` | 局部变量 STORE 后 | `@ModifyVariable` 判别器 |
+
+---
+
+*本文档基于 [经过修改的 SpongePowered Mixin](https://github.com/MDTCopper/Mixin) 源码（`org.spongepowered.asm.mixin` 包）、参考[SpongePowered Mixin Wiki](https://github.com/SpongePowered/Mixin/wiki) 和 [Fabric Wiki 中的 Mixin 章节](https://wiki.fabricmc.net/zh_cn:tutorial:mixin_examples)，由AI以实例驱动的文风生成。*

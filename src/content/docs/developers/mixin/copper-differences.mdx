@@ -1,0 +1,110 @@
+---
+title: 与 Minecraft Mixin 的差异
+description: Copper 使用的修改版 Mixin（MDTCopper/Mixin）与 Minecraft 原版 Mixin 的差异。
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Copper 使用的 Mixin 是 **SpongePowered Mixin 0.8.7 的修改版**（仓库：[MDTCopper/Mixin](https://github.com/MDTCopper/Mixin)），版本号 `0.1.x`。它删去了与 Minecraft 相关的代码，调整了若干默认值，并扩展了 Java 版本支持。
+
+<Aside type="caution" title="Minecraft 经验可以迁移，但差异必须知道">
+	如果你在 Minecraft（Fabric/Forge）里写过 Mixin，大部分经验可以直接迁移。但下面这些差异**必须知道**，否则可能踩坑。
+</Aside>
+
+## 功能裁剪
+
+原版 Mixin 为了适配 Minecraft 的各种加载环境（Forge、Fabric/ModLauncher、旧版启动器），内置了大量平台服务。这些在 Mindustry 场景下**全部无用**，因此被删除：
+
+| 被删内容 | 用途 | 对 Copper 的影响 |
+| -------- | ---- | ---------------- |
+| Mojang 服务（`service.mojang.*`） | 旧版 Minecraft 启动器（LaunchWrapper）集成 | 无。Mindustry 不使用 LaunchWrapper |
+| ModLauncher 服务（`service.modlauncher.*`） | Fabric/Forge 的类加载服务集成 | 无 |
+| Forge/FML 平台代理 | Forge 专用平台 | 无 |
+| MixinAgent（`tools.agent.*`） | Java agent（`-javaagent`）运行时注入 | **不支持 javaagent 方式注入**。Copper 通过自己的容器类加载管线完成变换 |
+| RuntimeDecompiler（Fernflower） | 导出时反编译 | 无（导出仍可用，见下文） |
+| 混淆相关（`tools.obfuscation.*` 的 JSON/Mapping） | 官方混淆映射 | **Mindustry 不混淆，无需映射** |
+| `module-info` 等 | Java 模块化 | 无 |
+
+**结论：** 面向 Minecraft 的配置项（`refmap`、混淆映射、`MixinPlatformAgent` 等）在 Copper 中不存在或无效，不要使用。
+
+## 默认值调整
+
+原版 Mixin 的所有注解 `remap` 默认为 `true`（因为 Minecraft 有混淆）。**本项目把全部注解的 `remap` 默认值改为 `false`**：
+
+```java
+@Mixin(value = Vars.class, remap = false)   // remap 可省略，默认就是 false
+public abstract class MyPatch { ... }
+```
+
+涉及注解：`@Mixin`、`@Overwrite`、`@Shadow`、`@Accessor`、`@Invoker`、`@At`、`@Inject`、`@ModifyArg`、`@ModifyArgs`、`@ModifyConstant`、`@ModifyVariable`、`@Redirect`。
+
+**影响：**
+
+- 你**不需要**（也不应该）写 `remap = false`，省略即可；
+- **不要**把 `remap` 设为 `true`——没有映射表可查，会直接报错；
+- `refmap` 相关配置无需处理。
+
+## Java 版本支持扩展
+
+原版 Mixin 0.8.7 官方支持到 Java 21。本项目**扩展支持 Java 22–25**（Mixin 环境兼容级别 `JAVA_17` ~ `JAVA_25`）：
+
+- 最低兼容级别：`JAVA_17`（这也是 Copper 要求 **Java 17+** 的原因之一）；
+- 最高兼容级别：`JAVA_25`；
+- 即使本机装了更新的 JDK，Mixin 也能正常工作。
+
+## 目标选择器默认值
+
+Mixin 配置的 `target` 字段（`@env(...)` 目标选择器）在原版中无默认值；本项目**默认设为 `@env(DEFAULT)`**。绝大多数情况下你不需要书写 `target` 字段。
+
+## 调试输出目录可运行时修改
+
+原版的 Mixin 调试导出目录是编译期常量。本项目改为**运行时可变**，加载器会为每个容器设置独立的子目录：
+
+```
+.mixin.out/<容器id>/
+```
+
+容器 id 示例：`mindustry`、`example-examplemod`。配合 `--mixin-flag <modId,DEBUG_EXPORT>` 使用（见[入门教程 · 调试技巧](/developers/mixin/intro/#调试技巧)）。
+
+## 服务提供方式不同
+
+原版 Mixin 通过扫描 classpath 发现服务。本项目实现了一套**自有的 Mixin 服务**（`copper.loader.mixin.MixinEngineService`），通过 `META-INF/services` 注册：
+
+- **字节码来源**：不是文件系统，而是加载器的容器系统（按容器解析目标类的字节码）；
+- **配置来源**：Mixin 配置在内存中提供（`copper://<id>.json`），不会去磁盘扫描 `mixins.json`；
+- 全局属性服务：`MixinEngineGlobalPropertyService`。
+
+**对模组作者的影响：**
+
+- 不要在 Jar 里放原版风格的 `mixins.json`（不会生效），一切以 `copper.mod.json` + `assets/copper/` 下的配置为准（见[配置 JSON 详解](/developers/mixin/config/)）；
+- Mixin 引擎按容器独立初始化，不同模组的注入互不干扰；
+- 每个容器一个引擎实例，但共享全局单例的变换器——注入顺序由配置登记顺序决定。
+
+## 注解处理器
+
+**注解处理器被保留**，且修复了与 `remap` 默认值不一致的判定逻辑（AP 侧同样默认 `remap = false`）。构建时引入：
+
+```groovy
+annotationProcessor "com.github.MDTCopper:Mixin:$mixinVersion:processor"
+```
+
+它在编译期检查注解用法（目标类存在性、签名匹配等），能在开发期发现大部分低级错误，**强烈建议配置**。
+
+## Mixin 配置语法差异速查
+
+| 项目 | Minecraft 原版 | Copper |
+| ---- | -------------- | ------ |
+| 配置文件名 | `mixins.json`（任意位置） | `assets/copper/<任意名>.json`（由元数据引用） |
+| 配置格式 | 纯 Mixin 配置 | `{ "version": 1, "config": {...} }` |
+| `mixins` 字段 | 类名数组 | 版本过滤器 → 类名映射（可多分支合并） |
+| `target` | 需显式设置 | 默认 `@env(DEFAULT)` |
+| 混淆映射 | 需要 `refmap` | 不需要 |
+| 加载方式 | 扫描 classpath | 容器 + 内存 `copper://` |
+| Java agent | 可用 | **不可用**（由容器管线代替） |
+
+## 实用建议
+
+1. **面向版本写注入**：游戏版本变化大（正式版/BE 版本号体系不同），尽量用[版本过滤](/developers/mixin/config/)拆分注入分支，而不是硬编码某个版本的行为；
+2. **少用 `@Overwrite`**：游戏更新频繁，`@Inject` 更抗版本变化；
+3. **别写 `remap`**：默认就是正确的；
+4. **调试靠日志与导出**：`--mixin-log`、`--mixin-flag ...DEBUG_EXPORT`（见[入门教程](/developers/mixin/intro/#调试技巧)）。

@@ -1,0 +1,160 @@
+---
+title: 类隔离机制
+description: Copper 的容器模型、类可见性规则（exports/imports）与行为说明。
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 原版模组的问题
+
+Mindustry 原版**其实有基础的类加载隔离**：每个 Java 类模组（jar/zip/目录）都由一个**独立的类加载器**加载（`Mods.loadMod()` 里对每个模组执行 `platform.loadJar(...)` 并 `mainLoader.addChild(loader)`），桌面端默认实现是 **child-first**——模组**自己 JAR 里的类优先从自己的 JAR 加载**。游戏本体类也始终由游戏自身的类加载器提供：把 `mindustry.*` 打进模组 JAR 的模组，其主类的 `Mod`/`Plugin` 超类会来自模组自己的加载器，`Mods` 检测到后直接**拒绝加载**，并提示不要打包 Mindustry 依赖。
+
+但原版的隔离只到"每个模组一个加载器"这一层，**类可见性完全不受控**：所有模组的加载器都注册在同一个共享的 `ModClassLoader`（`mainLoader`）之下，它的 `findClass()` 在游戏类加载器找不到类时，会**按加载顺序遍历全部模组加载器**查找。由此带来两个经典问题：
+
+ - **同名类冲突**: 两个模组各自打包了同名类（例如都内置了某个第三方库的不同版本，或都写了 `util.Helper`）时，由于 child-first，**双方在各自内部用的是自己 JAR 里的那份**——但它们是两个互不相同的 `Class` 对象。一旦实例经由游戏 API 跨模组传递，`instanceof` 或强转就会抛 `ClassCastException`，静态状态也不共享；而引用**自己没有打包**的类时，解析结果完全由加载顺序决定：**先加载的模组里的实现生效**，后加载者只能被动接受，对方更新或移除后便莫名崩溃。模组作者只能靠改名、避免同名来规避，治标不治本。
+
+ - **依赖泄露**: 任何模组都能解析到任何其他模组的类——自己 JAR 里没有的类，会沿着共享加载器链在别的模组里找到，**即使没有声明任何依赖**。`mod.json` 的 `dependencies` / `softDependencies` 只用来决定**加载顺序**（`resolveDependencies()` 拓扑排序）与缺失依赖检测，**与类可见性无关**。后果有两个方向：一方面，你的模组可能在不知情时用上了另一个模组的内部类，一旦对方更新或移除，你的模组就莫名其妙崩溃；另一方面，你想隐藏的内部实现也根本藏不住，别人随时可以引用。依赖关系形同虚设。
+
+## Copper 的解法
+
+Copper 把原版"加载器级"的浅隔离升级为**可见性级**的完整隔离：每个模组、游戏本体、加载器、每个原版 Mindustry 模组都是一个独立的**容器**，拥有自己的类加载器、资源与规则。容器之间查找类**只沿显式声明的依赖边**进行，没有依赖边就没有任何可见性。因此默认情况下，**一个 Copper 模组看不到任何其他模组的类**。类要想被看见，必须满足三条显式规则：
+
+1. **依赖声明**：声明依赖，建立访问通道；
+2. **导出规则**：被依赖方把类"公布"出来（`exports`）；
+3. **导入规则**：访问方针对某个依赖额外放行（`imports`）。
+
+三条规则环环相扣，下面逐一展开。
+
+<Aside type="note" title="原版模组的兼容处理">
+	原版模组在 Copper 下按 `MindustryMod` 加载。为了不破坏原版生态，Copper 让原版模组**互相之间保持可见**（自动为每个原版模组建立指向其他原版模组的依赖边并附带 `include *` 放行，复刻原版 `ModClassLoader` 的行为）；但它们**不向 Copper 模组导出任何类**——Copper 模组要访问原版模组的类，必须声明依赖并显式 `imports`（见下文）。
+</Aside>
+
+## 依赖声明
+
+容器是"墙围起来的类空间"。**声明依赖就是把两堵墙之间打开一扇门**——但门后能看见什么，由对方的导出规则决定。
+
+每个模组容器**自动**获得以下依赖，无需声明：
+
+| 依赖 | 内容 |
+| ---- | ---- |
+| 核心模组 | Copper 核心模组（`copper.core.*` API） |
+| `mindustry` | 游戏本体全部类 |
+| `loader` | 加载器全部类 |
+
+也就是说，任何 Copper 模组都能直接使用游戏 API 与 `copper.core.*` 工具类，与原版体验一致。你在 `dependencies` 中声明的每个模组，同样成为访问通道。
+
+<Aside type="note" title="loader 与核心模组等效">
+	`loader` 与核心模组是等效的：两者版本始终一致，且每个 Copper 模组都被系统自动依赖核心模组。因此声明 `"loader": ">=0.1.0"` 与声明 `"copper:core": ">=0.1.0"` 效果相同。
+</Aside>
+
+## 导出规则
+
+默认情况下，**一个模组的类对外是不可见的**。`exports` 字段把类"公布"出去：
+
+```json
+"exports": [
+  "exclude example.examplemod.internal.*",
+  "include example.examplemod.*"
+]
+```
+
+### 规则语法
+
+- 每条规则：`"include <模式>"` 或 `"exclude <模式>"`；
+- 模式匹配**全限定类名**，支持通配符：
+  - `*`：任意字符序列（含空）；
+  - `?`：恰好一个字符；
+- 规则**从上到下**逐条匹配，**第一条匹配**的规则生效（`include` 表示可见，`exclude` 表示不可见）；
+- 所有规则都不匹配时，默认**不可见**；
+- 系统会自动在你的规则末尾追加 `include <你的包>.*`（基于 `id` 生成），保证主类所在的顶层包至少对他人可见。
+
+### 常见写法
+
+```json
+// 只导出 API 包，隐藏实现细节
+"exports": [
+  "exclude example.examplemod.impl.*",
+  "include example.examplemod.*"
+]
+```
+
+```json
+// 什么都不写：只导出自动追加的 <包>.*
+"exports": []
+```
+
+<Aside type="caution" title="exclude 必须写在 include 之前">
+	`exclude` 必须写在 `include` 之前，因为规则按顺序匹配。`include example.examplemod.*` 会先命中 `example.examplemod.impl.X`，后面的 `exclude` 就轮不到了。
+</Aside>
+
+### 行为效果
+
+- 其他模组只能引用通过 `exports` 导出的类；
+- 未导出的类即使存在于 Jar 中，对其他模组也**不可见**（加载时报 `ClassNotFoundException`）；
+- **不影响你自己的模组**：本模组内部始终能使用自己的所有类。
+
+## 导入规则
+
+依赖模组的**未导出**类，默认对你的模组也不可见。`imports` 用于针对某个依赖模组**额外打开**可见性：
+
+```json
+{
+  "dependencies": { "dep:mod": ">=1.0.0" },
+  "imports": {
+    "dep:mod": ["include dep.sub.*", "include dep.extra.*"]
+  }
+}
+```
+
+### 规则
+
+- `imports` 的键必须是**已声明在 `dependencies` 中**的模组 id；
+- 值可以是单条规则或规则数组，语法与 `exports` 相同（从上到下匹配）；
+- 规则中的模式匹配**目标模组的类**，`include` 表示"即使目标模组未导出，我也能看到"。
+
+### 典型使用场景
+
+1. **依赖模组没有导出你需要的类**（作者忘了导出，或你正在为其做补丁/调试）；
+2. **访问原版 Mindustry 模组的类**——注意，原版模组不使用 `exports` 机制，默认**不导出任何类**。即使你声明了 `"dependencies": { "mindustry:some-mod": "=1.0.0" }`，**如果不显式 `imports`，你依然访问不到它的类**：
+
+```json
+{
+  "dependencies": { "mindustry:new-horizon": "=2.2.1" },
+  "imports": {
+    "mindustry:new-horizon": ["include newhorizon.*"]
+  }
+}
+```
+
+<Aside type="caution" title="新手最容易踩的坑">
+	声明了依赖、编译也没报错，运行时却 `ClassNotFoundException`？原版模组的类必须靠 `imports` 显式放行。
+</Aside>
+
+## 类加载的查找顺序
+
+在模组容器内查找一个类时，按以下顺序：
+
+1. **自己的类**（优先）；
+2. **Mixin 目标容器**的公开类（如果你声明了 Mixin 目标，见下文）；
+3. **依赖容器**的公开类。
+
+## Mixin 目标与可见性
+
+声明 Mixin 目标（`mixins` 字段）时，目标容器的公开类会进入你的查找范围。因此给其他模组写补丁时，即使不声明 `dependencies`，只要声明了 `mixins` 目标，也能看到目标模组的公开类。Mixin 注入本身不受导出规则限制——注入是字节码层面的操作，发生在目标容器内部。
+
+## 常见问题
+
+### 我引用了别的模组的类，运行时报 `ClassNotFoundException`
+
+- 确认该模组已声明为 `dependencies`；
+- 确认该类在目标模组的 `exports` 中，或你通过 `imports` 显式放行；
+- 原版 Mindustry 模组的 id 形如 `mindustry:<模组名>`，**必须用 `imports` 显式导入**它的类。
+
+### 我的模组被别人引用时报 `ClassNotFoundException`
+
+- 在 `exports` 中把该类所在的包 include 出来；
+- 检查 `exclude` 规则是否意外覆盖了该包（注意规则顺序）。
+
+### 两个模组有同名类，会冲突吗？
+
+不会。每个模组在自己的容器中加载自己的类，互不干扰。只有当你通过依赖/导入引用了对方的类时，才会使用对方容器中的定义——这正是容器隔离的初衷：**模组之间互不污染，冲突只会在你主动要求访问时发生**。

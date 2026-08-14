@@ -1,0 +1,559 @@
+---
+title: Mixin 示例
+description: 常用 Mixin 写法示例合集（原文来自 Fabric Wiki）。
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note" title="关于本文">
+	本文由搬运自 [Fabric Wiki](https://wiki.fabricmc.net/zh_cn:tutorial:mixin_examples)。
+</Aside>
+
+收录了较为常见的 Mixin 示例。此页面旨在帮助开发者快速学习 Mixin 的使用，建议在开始之前先查看 [Mixin介绍](https://wiki.fabricmc.net/zh_cn:tutorial:mixin_introduction)。
+
+## 注入到内部私有类的一个方法
+
+使用 targets 参数并添加 `$` 符号来指向内部类。
+
+```
+@Mixin(targets = "net.minecraft.client.render.block.BlockModelRenderer$AmbientOcclusionCalculator")
+public class AmbientOcclusionCalculatorMixin {
+    // 为所欲为 ^ v ^
+}
+```
+
+## 在 Mixin 类中获取目标类实例对象
+
+注意：应该避免像这样两次强转 `this`。如果你是要使用来自目标来的方法或字段，使用 `@Shadow`。如果方法或字段是来自目标类的父类，可以直接将你的这个 mixin 继承那个父类。 Mixin:
+
+```
+@Mixin(TargetClass.class)
+public class MyMixin extends EveryThingThatTargetClassExtends implements EverythingThatTargetClassImplements {
+  @Inject(method = "foo()V", at = @At("HEAD"))
+  private void injected(CallbackInfo ci) {
+    TargetClass thisObject = (TargetClass)(Object)this;
+  }
+}
+```
+
+## 注入到静态初始化代码块的开头
+
+Mixin:
+
+```
+@Inject(method = "<clinit>", at = @At("HEAD"))
+private void injected(CallbackInfo ci) {
+    doSomething3();
+}
+```
+
+结果:
+
+```
+static {
++   injected(new CallbackInfo(“<clinit>”, false));
+    doSomething1();
+    doSomething2();
+}
+```
+
+## 注入在一个方法的开头
+
+Mixin:
+
+```
+@Inject(method = "foo()V", at = @At("HEAD"))
+private void injected(CallbackInfo ci) {
+  doSomething4();
+}
+```
+
+结果:
+
+```
+  public void foo() {
++   injected(new CallbackInfo("foo", false));
+    doSomething1();
+    doSomething2();
+    doSomething3();
+  }
+```
+
+## 注入到一个方法的结尾
+
+Mixin:
+
+```
+@Inject(method = "foo()V", at = @At("TAIL"))
+private void injected(CallbackInfo ci) {
+  doSomething4();
+}
+```
+
+结果:
+
+```
+  public void foo() {
+    doSomething1();
+    if (doSomething2()) {
+      return;
+    }
+    doSomething3();
++   injected(new CallbackInfo("foo", false));
+  }
+```
+
+## 注入到一个方法的返回之前
+
+Mixin:
+
+```
+@Inject(method = "foo()V", at = @At("RETURN"))
+private void injected(CallbackInfo ci) {
+  doSomething4();
+}
+```
+
+结果:
+
+```
+  public void foo() {
+    doSomething1();
+    if (doSomething2()) {
++     injected(new CallbackInfo("foo", false));
+      return;
+    }
+    doSomething3();
++   injected(new CallbackInfo("foo", false));
+  }
+```
+
+## 注入到一个方法调用之前
+
+Mixin:
+
+```
+@Inject(method = "foo()V", at = @At(value = "INVOKE", target = "La/b/c/Something;doSomething()V"))
+private void injected(CallbackInfo ci) {
+  doSomething3();
+}
+```
+
+结果:
+
+```
+  public void foo() {
+    doSomething1();
+    Something something = new Something();
++   injected(new CallbackInfo("foo", false));
+    something.doSomething();
+    doSomething2();
+  }
+```
+
+## 注入到一个方法调用之后
+
+Mixin:
+
+```
+@Inject(method = "foo()V", at = @At(value = "INVOKE", target = "La/b/c/Something;doSomething()V", shift = At.Shift.AFTER))
+private void injected(CallbackInfo ci) {
+  doSomething3();
+}
+```
+
+结果:
+
+```
+  public void foo() {
+    doSomething1();
+    Something something = new Something();
+    something.doSomething();
++   injected(new CallbackInfo("foo", false));
+    doSomething2();
+  }
+```
+
+## 使用偏移量注入
+
+Mixin:
+
+```
+@Inject(method = "foo()V", at = @At(value = "INVOKE", target = "La/b/c/Something;doSomething()V", shift = At.Shift.BY, by = 2))
+private void injected(CallbackInfo ci) {
+  doSomething3();
+}
+```
+
+结果:
+
+```
+  public void foo() {
+    doSomething1();
+    Something something = new Something();
+    something.doSomething();
+    doSomething2();
++   injected(new CallbackInfo("foo", false));
+  }
+```
+
+## 使用 Slice 控制注入范围
+
+Mixin:
+
+```
+@Inject(
+  method = "foo()V",
+  at = @At(
+    value = "INVOKE",
+    target = "La/b/c/Something;doSomething()V"
+  ),
+  slice = @Slice(
+    from = @At(value = "INVOKE", target = "La/b/c/Something;doSomething2()V"),
+    to = @At(value = "INVOKE", target = "La/b/c/Something;doSomething3()V")
+  )
+)
+private void injected(CallbackInfo ci) {
+  doSomething5();
+}
+```
+
+结果:
+
+```
+  public class Something {
+    public void foo() {
+      this.doSomething1();
++     // 不会注入到此位置，因为它位于Slice范围之外
+      this.doSomething();
+      this.doSomething2();
++     injected(new CallbackInfo("foo", false));
+      this.doSomething();
+      this.doSomething3();
++     // 不会注入到此位置，因为它位于Slice范围之外
+      this.doSomething();
+      this.doSomething4();
+    }
+  }
+```
+
+## 注入并直接使当前方法返回
+
+Mixin:
+
+```
+@Inject(method = "foo()V", at = @At("HEAD"), cancellable = true)
+private void injected(CallbackInfo ci) {
+  ci.cancel();
+}
+```
+
+结果:
+
+```
+  public void foo() {
++   CallbackInfo ci = new CallbackInfo("foo", true);
++   injected(ci);
++   if (ci.isCancelled()) return;
+    doSomething1();
+    doSomething2();
+    doSomething3();
+  }
+```
+
+## 注入并使当前方法返回指定返回值
+
+Mixin:
+
+```
+@Inject(method = "foo()I;", at = @At("HEAD"), cancellable = true)
+private void injected(CallbackInfoReturnable<Integer> cir) {
+  cir.setReturnValue(3);
+}
+```
+
+结果:
+
+```
+  public int foo() {
++   CallbackInfoReturnable<Integer> cir = new CallbackInfoReturnable<Integer>("foo", true);
++   injected(cir);
++   if (cir.isCancelled()) return cir.getReturnValue();
+    doSomething1();
+    doSomething2();
+    doSomething3();
+    return 10;
+  }
+```
+
+## 捕获局部变量
+
+Mixin:
+
+```
+@Inject(method = "foo()V", at = @At(value = "TAIL"), locals = LocalCapture.CAPTURE_FAILHARD)
+private void injected(CallbackInfo ci, TypeArg1 arg1) {
+  //CAPTURE_FAILHARD: 如果计算局部变量与预期不符则抛出一个异常。
+  arg1.doSomething4();
+}
+```
+
+结果:
+
+```
+  public void foo() {
+    TypeArg1 arg1 = getArg1();
+    arg1.doSomething1();
+    arg1.doSomething2();
+    TypeArg2 arg2 = getArg2();
+    arg2.doSomething3();
++   injected(new CallbackInfo("foo", false), arg1);
+  }
+```
+
+### 捕获多个同一类型的局部变量中的一个
+
+Mixin：
+
+```
+@Inject(method = "foo()V", at = @At(value = "TAIL"))
+private void injected(CallbackInfo ci, @Local(ordinal = 2) TypeArg arg) {
+  arg1.doSomething4();
+}
+```
+
+结果：
+
+```
+  public void foo() {
+    TypeArg arg1 = getArg1();
+    TypeArg arg2 = getArg2();
+    TypeArg arg3 = getArg3();
+    TypeArg arg4 = getArg4();
+    doSomething();
++   injected(new CallbackInfo("foo", false), arg3);
+  }
+```
+
+## 修改返回值
+
+Mixin:
+
+```
+@Inject(method = "foo()I;", at = @At("RETURN"), cancellable = true)
+private void injected(CallbackInfoReturnable<Integer> cir) {
+  cir.setReturnValue(cir.getReturnValue() * 3);
+}
+```
+
+结果:
+
+```
+  public int foo() {
+    doSomething1();
+    doSomething2();
+-   return doSomething3() + 7;
++   int i = doSomething3() + 7;
++   CallbackInfoReturnable<Integer> cir = new CallbackInfoReturnable<Integer>("foo", true, i);
++   injected(cir);
++   if (cir.isCancelled()) return cir.getReturnValue();
++   return i;
+  }
+```
+
+## 重定向一个方法调用
+
+Mixin:
+
+```
+@Redirect(method = "foo()V", at = @At(value = "INVOKE", target = "La/b/c/Something;doSomething(I)I"))
+private int injected(Something something, int x) {
+  return x + 3;
+}
+```
+
+结果:
+
+```
+  public void foo() {
+    doSomething1();
+    Something something = new Something();
+-   int i = something.doSomething(10);
++   int i = injected(something, 10);
+    doSomething2();
+  }
+```
+
+## 重定向获取到的字段值
+
+Mixin:
+
+```
+@Redirect(method = "foo()V", at = @At(value = "FIELD", target = "La/b/c/Something;aaa:I", opcode = Opcodes.GETFIELD))
+private int injected(Something something) {
+  return 12345;
+}
+```
+
+结果:
+
+```
+  public class Something {
+    public int aaa;
+    public void foo() {
+      doSomething1();
+-     if (this.aaa > doSomething2()) {
++     if (injected(this) > doSomething2()) {
+        doSomething3();
+      }
+      doSomething4();
+    }
+  }
+```
+
+## 重定向一个字段的赋值
+
+Mixin:
+
+```
+@Redirect(method = "foo()V", at = @At(value = "FIELD", target = "La/b/c/Something;aaa:I", opcode = Opcodes.PUTFIELD))
+private void injected(Something something, int x) {
+  something.aaa = x + doSomething5();
+}
+```
+
+结果:
+
+```
+  public class Something {
+    public int aaa;
+    public void foo() {
+      doSomething1();
+-     this.aaa = doSomething2() + doSomething3();
++     inject(this, doSomething2() + doSomething3());
+      doSomething4();
+    }
+  }
+```
+
+## 修改调用方法的一个参数
+
+Mixin:
+
+```
+@ModifyArg(method = "foo()V", at = @At(value = "INVOKE", target = "La/b/c/Something;doSomething(ZIII)V"), index = 2)
+private int injected(int x) {
+  return x * 3;
+}
+```
+
+结果:
+
+```
+  public void foo() {
+    doSomething1();
+    Something something = new Something();
+-   something.doSomething(true, 1, 4, 5);
++   something.doSomething(true, 1, injected(4), 5);
+    doSomething2();
+  }
+```
+
+## 修改调用方法的多个参数
+
+Mixin:
+
+```
+@ModifyArgs(method = "foo()V", at = @At(value = "INVOKE", target = "La/b/c/Something;doSomething(IDZ)V"))
+private void injected(Args args) {
+    int a0 = args.get(0);
+    double a1 = args.get(1);
+    boolean a2 = args.get(2);
+    args.set(0, a0 + 3);
+    args.set(1, a1 * 2.0D);
+    args.set(2, !a2);
+}
+```
+
+结果:
+
+```
+  public void foo() {
+    doSomething1();
+    Something something = new Something();
+-   something.doSomething(3, 2.5D, true);
++   // 事实上，自动生成的 Args 子类是在运行时被创建的，
++   // 但是我们抹去了一些细节以便于理解。
++   Args args = new Args(new Object[] { 3, 2.5D, true });
++   injected(args);
++   something.doSomething(args.get(0), args.get(1), args.get(2));
+    doSomething2();
+  }
+```
+
+## 修改一个接收参数
+
+Mixin:
+
+```
+@ModifyVariable(method = "foo(ZIII)V", at = @At("HEAD"), ordinal = 1)
+private int injected(int y) {
+  return y * 3;
+}
+```
+
+结果:
+
+```
+  public void foo(boolean b, int x, int y, int z) {
++   y = injected(y);
+    doSomething1();
+    doSomething2();
+    doSomething3();
+  }
+```
+
+## 在赋值时修改一个局部变量
+
+Mixin:
+
+```
+@ModifyVariable(method = "foo()V", at = @At("STORE"), ordinal = 1)
+private double injected(double x) {
+  return x * 1.5D;
+}
+```
+
+结果:
+
+```
+  public void foo() {
+    int i0 = doSomething1();
+    double d0 = doSomething2();
+-   double d1 = doSomething3() + 0.8D;
++   double d1 = injected(doSomething3() + 0.8D);
+    double d2 = doSomething4();
+  }
+```
+
+## 修改一个常量
+
+Mixin:
+
+```
+@ModifyConstant(method = "foo()V", constant = @Constant(intValue = 4))
+private int injected(int value) {
+  return ++value;
+}
+```
+
+结果:
+
+```
+  public void foo() {
+-   for (int i = 0; i < 4; i++) {
++   for (int i = 0; i < injected(4); i++) {
+      doSomething(i);
+    }
+  }
+```

@@ -1,0 +1,63 @@
+---
+title: 开发者指南总览
+description: Copper 模组开发指南的阅读顺序与内容地图。
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+本部分面向**模组作者**，介绍如何为 Copper 编写模组。
+
+## 阅读前提
+
+本指南**假定你已经具备 Mindustry 官方模组开发的基础**，包括：
+
+- 知道如何编写一个普通的 Mindustry Java 模组（`Mod` 子类、`mod.hjson`、`loadContent()`、content 定义等）；
+- 会使用 Gradle 构建模组 Jar。
+
+如果你还没有这些基础，请先学习 [Mindustry 官方模组文档](https://mindustrygame.github.io/wiki/modding/1-modding/) 与 [MindustryJavaModTemplate](https://github.com/Anuken/MindustryJavaModTemplate)。本指南不再重复讲解原版内容，只聚焦 Copper 的**不同点与新特性**。
+
+<Aside type="tip" title="不要求 Mixin 基础">
+	与"必须会 Mixin"的假设相反，本指南会从零开始讲解 Mixin。如果你从未接触过 Mixin，请务必阅读 [Mixin 入门教程](/developers/mixin/intro/)。
+</Aside>
+
+## 建议阅读顺序
+
+Copper 的模组模型由四层组成，请按顺序阅读：
+
+### 元数据
+
+- **[快速开始](/developers/getting-started/)**：项目结构、构建配置、依赖坐标。先把一个最小模组跑起来。
+- **[模组元数据](/developers/mod-meta/)**：`copper.mod.json` 的完整语法。它与原版 `mod.hjson` 差异很大，**必读**。
+
+### 主类与运行
+
+- **[主类与生命周期](/developers/main-class/)**：`CopperMod` 继承自原版 `Mod`，只做行为扩展。了解主类写法、静态 `bootstrap()` 与实例生命周期。
+- **[数据、设置与本地化](/developers/data/)**：配置文件、设置项、多语言 bundle 的正确用法。
+
+### 依赖与可见性
+
+- **[版本、依赖与冲突](/developers/versions/)**：Copper 强化了版本控制——SemVer 表达式过滤器、字符串版本回退、显式冲突。**必读**。
+- **[类隔离机制](/developers/class-visibility/)**：Copper 的容器与类加载模型，以及 `exports` / `imports` 规则如何控制类可见性。
+
+### Mixin
+
+- **[Mixin 概述](/developers/mixin/)**：Mixin 是什么、Copper 的 Mixin 体系长什么样。
+- **[Mixin 入门教程](/developers/mixin/intro/)**：从零开始的教程，使用 Mindustry 实例讲解。
+- **[配置 JSON 详解](/developers/mixin/config/)**：Copper 版 Mixin 配置的语法（与原版不同）。
+- **[与 Minecraft Mixin 的差异](/developers/mixin/copper-differences/)**：本项目使用的修改版 Mixin 有哪些变化，哪些功能被裁剪。
+- **[Mixin 示例](/developers/mixin/examples/)** 与 **[注解参考手册](/developers/mixin/reference/)**：熟练者的速查手册。
+
+### 扩展专题
+
+- **[网络数据包](/developers/networking/)**：突破 Mindustry 256 个数据包上限的自定义网络数据包。
+
+## 新特性速览
+
+| 特性 | 说明 | 参考 |
+| ---- | ---- | ---- |
+| 全新元数据格式 | `copper.mod.json`，声明式依赖/冲突/Mixin | [模组元数据](/developers/mod-meta/) |
+| SemVer 版本过滤 | `^1.2.3`、`>=1.0.0 && <2.0.0` 等表达式 | [版本、依赖与冲突](/developers/versions/) |
+| 显式冲突 | 声明与哪些模组冲突 | [版本、依赖与冲突](/developers/versions/#冲突) |
+| 类隔离 | 每个模组一个容器，`exports`/`imports` 控制可见性 | [类隔离机制](/developers/class-visibility/) |
+| Mixin 热修改 | 对游戏或模组字节码注入 | [Mixin 概述](/developers/mixin/) |
+| 扩展网络数据包 | 数据包上限 256 扩展到 65536 | [网络数据包](/developers/networking/) |

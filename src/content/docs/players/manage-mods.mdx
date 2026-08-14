@@ -1,0 +1,76 @@
+---
+title: 管理模组
+description: 模组存放位置、安装与卸载、依赖处理。
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+由 Copper 启动的 Mindustry **不支持在游戏内导入、移除或启停模组**（游戏内相应界面会提示不支持）。所有模组管理操作都在文件层面进行：放入 Jar 即安装，删除 Jar 即卸载。
+
+## 模组放在哪里
+
+Copper 会扫描**两个**模组文件夹：
+
+| 文件夹 | 用途 |
+| ------ | ---- |
+| `<数据目录>/copper/mods/` | **Copper 原生模组**（元数据文件为 `copper.mod.json` / `copper.mod.hjson`） |
+| `<数据目录>/mods/` | **原版 Mindustry 模组**（元数据文件为 `mod.json` / `mod.hjson` / `plugin.json` / `plugin.hjson`） |
+
+其中 `<数据目录>` 是命令行参数 `-D` 指定的目录，未指定时默认为当前工作目录下的 `.mindustry`。
+
+- Windows 上常见的对应关系：`C:\Users\<用户名>\.mindustry\copper\mods` 与 `C:\Users\<用户名>\.mindustry\mods`；
+- Linux 上：`~/.mindustry/copper/mods` 与 `~/.mindustry/mods`。
+
+<Aside type="note" title="两个文件夹可以共存">
+	两个文件夹的模组可以**共存**：Copper 兼容并加载原版 Mindustry 模组，同时为其提供容器级类加载支持。
+</Aside>
+
+## 安装模组
+
+1. 下载模组 Jar（通常是 `.jar` 或 `.zip`）；
+2. 将文件放入对应的模组文件夹：
+   - Copper 模组放 `copper/mods/`
+   - 原版模组放 `mods/`
+3. 重新启动游戏。
+
+启动日志会显示扫描到的模组数量：
+
+```
+Found 3 mods.
+```
+
+## 卸载模组
+
+- **直接删除**模组文件夹中的对应 Jar 文件即可；
+- 若模组间存在依赖关系，删除被依赖的模组会导致依赖方加载失败（见下文）。
+
+## 核心模组
+
+`<数据目录>/copper/mods/copper-core.jar` 是 Copper 的**核心模组**，由加载器在首次启动时自动释放，负责把 Copper 模组接入 Mindustry 的模组系统。
+
+- **不要删除、改名或禁用**它，否则加载器无法正常工作（启动会报 `core mod is not found`）；
+- 升级加载器后首次启动会自动覆盖为匹配的新版本。
+
+## 依赖与冲突
+
+Copper 在启动时**自动解析模组依赖与冲突**，无需玩家手动配置：
+
+- **依赖缺失**：模组 A 声明依赖模组 B，但 B 未安装，启动报错 `failed to find dependency for A : B`，A 无法加载；
+- **依赖版本不满足**：B 已安装但版本不符合 A 的要求，报错 `dependency is not supported by A : B x.y.z`；
+- **显式冲突**：已安装的模组与某模组声明冲突，报错 `mod is conflict with ...`；
+- **游戏版本不满足**：模组要求特定游戏版本，报错 `game version is rejected by ...`；
+- **加载器版本不满足**：模组要求特定加载器版本，报错 `loader version is rejected by ...`。
+
+解决方式通常是：补齐缺失的依赖模组、升级/降级到兼容版本，或移除冲突模组。详细错误说明见[故障排除 · 依赖与冲突错误](/players/troubleshooting/#依赖与冲突错误)。
+
+## 模组加载顺序
+
+Copper 会根据依赖关系自动对模组排序：被依赖的模组先加载，依赖它的模组后加载。因此**你不需要关心 Jar 的文件名顺序**，把文件放进文件夹即可。
+
+如果模组之间形成了循环依赖，启动会报错：
+
+```
+one or more rings were found in mod dependency path, related mods: ...
+```
+
+这属于模组作者的问题，请联系相关模组作者修复。

@@ -1,0 +1,158 @@
+---
+title: 数据、设置与本地化
+description: 配置文件、设置项、资源文件与多语言 bundle 的正确用法。
+---
+
+import { Aside, FileTree } from '@astrojs/starlight/components';
+
+本页介绍 Copper 模组如何读写数据文件、创建设置项、访问资源与做多语言本地化。
+
+## 配置文件
+
+主类继承自原版 `Mod`，直接使用 `getConfigFolder()` 与 `getConfig()`：
+
+```java
+public class ExampleMod extends CopperMod {
+    @Override
+    public void init() {
+        // 配置文件夹
+        Fi folder = getConfigFolder();
+        // config.json 文件句柄
+        Fi config = getConfig();
+        Log.info("config: " + config.file().getAbsolutePath());
+    }
+}
+```
+
+Copper 模组的配置文件夹位于 **`<数据目录>/copper/datas/<作者-模组名>/`**（与 `id` 对应，冒号换连字符），与原版模组不同（见[主类与生命周期 · 配置文件夹的差异](/developers/main-class/#配置文件夹的差异)）。
+
+## 设置项
+
+推荐使用 `copper.core.Copper.createSettings()` 创建绑定到模组数据目录的 `Settings` 实例：
+
+```java
+import arc.Settings;
+import copper.core.Copper;
+
+public class ExampleMod extends CopperMod {
+    @Override
+    public void init() {
+        Settings settings = Copper.createSettings(ExampleMod.class);
+        settings.put("myOption", true);
+        Log.info("myOption = " + settings.getBool("myOption"));
+    }
+}
+```
+
+- 设置文件位于模组数据目录（`<数据目录>/copper/datas/<作者-模组名>/`）；
+- 每个模组使用**独立的设置实例**，互不干扰；
+- 底层使用 `CopperSettings`（`Settings` 子类）：它跳过了 Mindustry v146 中一次性的全局按键绑定重载，避免模组设置污染游戏全局按键数据。**你无需关心**，直接使用即可。
+
+<Aside type="note" title="为什么是独立实例？">
+	游戏自身和每个模组都用各自的 `Settings` 实例、各自的设置文件。这样模组的设置不会写进游戏的全局设置、也不会与其他模组互相覆盖，是加载器贯穿始终的隔离思路的一部分。附带的好处是：**自己的设置键不需要加模组名前缀**，直接写 `"myOption"` 即可，不会撞车。
+</Aside>
+
+## 资源文件
+
+### 两种资源位置
+
+模组 Jar 内的 `assets/` 目录会被挂载为**原版 `LoadedMod` 的资源根**，也就是说，游戏按原版方式加载的资源都从这里找。而 Copper 自己使用的资源约定放在 `assets/copper/` 下，两者互不干扰：
+
+| 位置 | 用途 |
+| ---- | ---- |
+| `assets/` | 原版模组资源：`bundles/`、`sprites/`、`content/`、`maps/` 等，由游戏按原版规则加载 |
+| `assets/copper/` | Copper 侧资源：例如 Mixin 配置 `assets/copper/mixins/`、Copper bundle `assets/copper/bundles/`，由加载器按 Copper 约定读取 |
+
+构建时由 `resources.srcDirs = ["res"]` 把 `res/` 目录内容打进 Jar，因此源目录布局为 `res/assets/...`。
+
+### 访问方式
+
+```java
+import arc.files.Fi;
+import copper.core.Copper;
+
+// assets 文件夹
+Fi assets = Copper.getModAssetFolder(ExampleMod.class);
+// assets/foo/bar.png
+Fi file = Copper.getModAsset(ExampleMod.class, "foo/bar.png");
+// 模组根目录下的任意文件
+Fi root = Copper.getModRoot(ExampleMod.class);
+```
+
+- 模组目录内**非 assets** 的文件用 `Copper.getModFile(clazz, path)` 访问；
+- 图片等资源按原版规则注册到 Atlas（sprite 名前缀为 `copper-<作者-模组名>-`，与游戏内注册的模组名一致）。
+
+<Aside type="note" title="Jar 与目录形态都能工作">
+	`Copper.getModAssetFolder()` 返回的 `Fi` 在 Jar 与目录两种形态下都能工作（Jar 内部自动走 `ZipFi`），无需区分。
+</Aside>
+
+## 多语言本地化
+
+Copper 提供与 `arc` 的 `I18NBundle` 结合的工具方法。约定资源布局（Copper 自己的 bundle，位于 `assets/copper/bundles/`）：
+
+<FileTree>
+- res/
+	- assets/
+		- copper/
+			- bundles/
+				- bundle.properties — 默认语言
+				- bundle_zh_CN.properties — 简体中文
+</FileTree>
+
+### 创建 bundle
+
+```java
+import arc.util.I18NBundle;
+import copper.core.Copper;
+
+public class ExampleMod extends CopperMod {
+    public static I18NBundle bundles;
+
+    public ExampleMod() {
+        bundles = Copper.createBundle(ExampleMod.class);
+    }
+}
+```
+
+- `Copper.createBundle(clazz)` 从 `assets/copper/bundles/bundle` 读取，并按系统语言自动选择语言文件；
+- 建议把 bundle 存为**静态字段**，在主类构造器中创建。
+
+<Aside type="note" title="为什么不用游戏的全局 bundle？">
+	与设置项同理：模组拥有**自己独立的 bundle 实例**，不会与游戏自带的翻译、其他模组的翻译互相污染；而且自己的 bundle 里**不需要给键加模组名前缀**，直接写 `mod.name`、`subtitle` 这样的键即可。如果你把内容写进游戏的全局 bundle，反而需要加前缀避免冲突，还要承担与游戏更新合并时的风险。
+</Aside>
+
+### 翻译模组元数据
+
+`Copper.translateModMeta(clazz, bundle)` 会用 bundle 翻译模组的 `name`、`author`、`description`、`subtitle`，并同步到原版模组注册表：
+
+```java
+public class ExampleMod extends CopperMod {
+    public static I18NBundle bundles;
+
+    public ExampleMod() {
+        bundles = Copper.createBundle(ExampleMod.class);
+        Copper.translateModMeta(ExampleMod.class, bundles);
+    }
+}
+```
+
+bundle 中约定使用的键：
+
+```properties
+mod.name = Example Mod
+mod.author = Example
+mod.description = A Copper example mod.
+subtitle = My Subtitle
+```
+
+## 文件目录速查
+
+| 用途 | 路径 |
+| ---- | ---- |
+| 加载器数据目录 | `<数据目录>/copper` |
+| Copper 模组文件夹 | `<数据目录>/copper/mods` |
+| Copper 模组数据目录 | `<数据目录>/copper/datas` |
+| 单个模组的配置/设置目录 | `<数据目录>/copper/datas/<作者-模组名>` |
+| 原生库（自动解压） | `<数据目录>/copper/lib` |
+
+`copper.core.Copper` 提供对应访问方法（见[主类与生命周期 · 模组上下文工具类](/developers/main-class/#模组上下文工具类)）。

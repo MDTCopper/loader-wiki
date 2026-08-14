@@ -1,0 +1,73 @@
+---
+title: 更新
+description: 更新 Copper 加载器与模组。
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+本页介绍如何更新 Copper 加载器与模组，以及更新时的版本兼容性注意事项。
+
+## 更新加载器
+
+1. 从 [MDTCopper/loader 的 Release](https://github.com/MDTCopper/loader/releases) 下载最新版本的 `CopperLoader` Jar；
+2. 用新 Jar **覆盖**旧的加载器 Jar；
+3. 重新启动游戏。
+
+加载器在启动时会打印版本号，例如：
+
+```
+CopperLoader v0.1.0
+```
+
+确认版本号与 Release 一致，即表示更新成功。
+
+## 更新模组
+
+模组以 Jar 文件的形式存放在模组文件夹中，更新方式同样是**用新版本文件覆盖旧文件**：
+
+- Copper 模组：`<数据目录>/copper/mods/`
+- 原版 Mindustry 模组：`<数据目录>/mods/`
+
+具体文件夹位置见[管理模组 · 模组放在哪里](/players/manage-mods/#模组放在哪里)。
+
+<Aside type="tip" title="覆盖前先删除旧文件">
+	覆盖前建议先删除旧文件再放入新文件，避免残留同名但内容不同的文件造成混淆。
+</Aside>
+
+## 版本兼容性
+
+### 加载器与模组
+
+Copper 模组在元数据中声明了自己对加载器版本的要求（例如 `"loader": ">=0.1.0"`）。如果加载器版本不满足要求，启动时会报错并拒绝加载该模组，例如：
+
+```
+loader version is rejected by author:mod : 0.0.5
+```
+
+此时请升级加载器，或联系模组作者确认兼容的加载器版本。
+
+### 游戏版本
+
+Copper 会根据游戏 Jar 自动识别版本，并在模组要求不满足时拒绝加载。模组通常声明了对游戏版本的要求，例如 `"mindustry": ">=8.159"`。
+
+在常见情况下：
+
+- **正式版（Release）**：版本形如 `8.159.7`（主版本.大版本.构建号）；
+- **Bleeding-Edge（BE）**：版本形如 `8.0.27179`；
+- **自定义构建**：仅有主版本号。
+
+如果你更换了游戏 Jar（例如从 BE 换回正式版），模组可能因为版本不满足而无法加载，这是正常行为——升级游戏时请同时确认所用模组的兼容范围。
+
+### 核心模组
+
+`copper-core.jar` 由加载器在启动时自动释放到 `<数据目录>/copper/mods/`。加载器升级后首次启动会**自动用新版本覆盖**它，无需手动处理。
+
+<Aside type="note" title="核心模组版本不匹配时">
+	如果加载器版本与已存在的核心模组不匹配，请删除旧的 `copper-core.jar` 后重新启动，让加载器重新释放。
+</Aside>
+
+## 升级后的检查清单
+
+1. 启动日志中的加载器版本是否正确；
+2. 模组列表（`Found N mods.`）是否完整；
+3. 没有出现 `failed to read mod`、`dependency is not supported` 等错误日志（见[故障排除](/players/troubleshooting/)）。

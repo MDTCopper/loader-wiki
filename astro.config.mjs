@@ -24,7 +24,8 @@ export default defineConfig({
 					label: '玩家指南',
 					items: [
 						{ label: '总览', slug: 'players' },
-						{ label: '安装', slug: 'players/install' },
+						{ label: '安装（桌面版）', slug: 'players/install' },
+						{ label: 'Android 版', slug: 'players/android' },
 						{ label: '更新', slug: 'players/update' },
 						{ label: '管理模组', slug: 'players/manage-mods' },
 						{ label: '故障排除', slug: 'players/troubleshooting' },
@@ -41,6 +42,7 @@ export default defineConfig({
 						{ label: '类隔离机制', slug: 'developers/class-visibility' },
 						{ label: '网络数据包', slug: 'developers/networking' },
 						{ label: '数据、设置与本地化', slug: 'developers/data' },
+						{ label: 'Android（ART）平台', slug: 'developers/android-art' },
 					],
 				},
 				{

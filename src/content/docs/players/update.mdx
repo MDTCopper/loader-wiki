@@ -21,6 +21,10 @@ CopperLoader v0.1.0
 
 确认版本号与 Release 一致，即表示更新成功。
 
+<Aside type="note" title="Android 端如何更新">
+	Android 端通过**启动器 App** 使用，更新方式是：安装新版 APK → 删除旧的内置文件或重新执行 **extract** → 重新执行 **build** 构建新的 dex 缓存（加载器升级后数据目录结构可能变化，直接 launch 可能报缓存缺失）。见[Android 版使用指南](/players/android/)。
+</Aside>
+
 ## 更新模组
 
 模组以 Jar 文件的形式存放在模组文件夹中，更新方式同样是**用新版本文件覆盖旧文件**：

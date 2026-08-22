@@ -1,0 +1,98 @@
+---
+title: Android 版使用指南
+description: 在 Android 设备上使用 Copper（通过启动器 App 构建与启动游戏）。
+---
+
+import { Steps, Aside, FileTree } from '@astrojs/starlight/components';
+
+Copper 也支持在 **Android 设备**上运行。Android 端通过一个**启动器 App** 使用：启动器在应用内调用加载器完成"解压内置文件 → 构建 → 启动游戏"三步操作，因此不需要在设备上安装 Java。
+
+## 为什么需要启动器 App
+
+原版 Mindustry 的 Android 版是一个独立 App，不支持替换其中的游戏本体。Copper 的 Android 端选择把游戏 Jar **内置在启动器 App 中**，由启动器通过加载器运行。因此：
+
+- 启动器 App 决定了可运行的游戏版本（游戏 Jar 内置在 App 资源中，例如 `159.7`）；
+- 游戏必须以 dex 形式运行，而 dex 只能由加载器负责构建（见[Android（ART）平台](/developers/android-art/)）；
+- App 内的**原版模式**开关，指示加载器**只启动内置的原版游戏、不加载任何 Copper 模组**——适用于不使用模组的玩家。
+
+## 环境要求
+
+- Android 11（API 30）或更高版本；
+- 手机存储空间：解压后的游戏文件 + 构建缓存（建议预留 1 GB 以上）；
+- 启动器 App 的 APK（由官方发布或自行构建）。
+
+## 启动器 App 的操作
+
+App 主界面提供三个按钮和一个开关：
+
+| 操作 | 说明 |
+| ---- | ---- |
+| **extract** | 把内置的文件（游戏 Jar、加载器、源码包）从 App 资源中解压到应用数据目录 |
+| **build** | 在设备上运行加载器，把游戏与模组字节码转换成 dex 并生成缓存 |
+| **launch** | 校验缓存后启动游戏 |
+
+- **原版模式开关**：开启后，`build` 与 `launch` 均按"只启动原版游戏"处理（见下文）；
+- 任务在后台线程执行；失败时会弹出错误对话框，并可通过"复制"按钮将堆栈复制到剪贴板用于反馈。
+
+## 使用流程
+
+<Steps>
+1. **安装并打开 App**，允许其创建应用数据目录。
+2. **点击 extract**：等待内置文件解压完成（只需执行一次；文件已存在时会跳过）。
+3. **点击 build**：生成游戏与模组的 dex 缓存。此步骤会加载所有已启用的模组、应用其 Mixin 并生成 dex，耗时与内存占用取决于模组数量。
+4. **点击 launch**：启动游戏。
+</Steps>
+
+<Aside type="tip" title="添加/更换模组后">
+	放入或替换模组后，**重新执行 build 即可**（缓存按"游戏版本 + 模组集合"的哈希命名，见[Android（ART）平台](/developers/android-art/)）。仅执行 launch 不会加载新模组。
+</Aside>
+
+## 文件位置
+
+所有文件都在 App 的**应用私有目录**（`filesDir`）下，不需要 root 权限：
+
+<FileTree>
+- filesDir/
+	- game/ — 游戏数据目录
+		- copper/
+			- mods/ — Copper 模组文件夹（放入 Jar 即安装）
+			- datas/ — 模组数据目录
+		- mods/ — 原版 Mindustry 模组文件夹
+	- cache/
+		- dex/ — dex 缓存
+	- oat/ — 优化后的 dex（oat）
+</FileTree>
+
+模组的管理方式与桌面版一致：**放入 Jar 即安装，删除 Jar 即卸载**（见[管理模组](/players/manage-mods/)）。
+
+## 原版模式
+
+App 内的**原版模式**开关对应加载器的原版模式（`--vanilla`）：
+
+- 只启动内置的**原版游戏**，加载核心模组与原版 Mindustry 模组，**不加载任何 Copper 模组**；
+- 扩展网络数据包（`ExtendedPacket`）不会注册，避免与原版联机协议冲突；
+- 游戏内版本号会附加 `(vanilla mode)` 标记。
+
+<Aside type="note" title="为什么需要原版模式">
+	桌面端如需原版环境，运行官方 Mindustry Jar 即可；但 Android 端**只能通过启动器内的加载器**启动内置游戏。原版模式即为此场景提供：由加载器以不加载任何 Copper 模组的方式启动原版游戏。
+</Aside>
+
+## 常见问题
+
+### 点击 launch 后提示缓存不存在
+
+```
+runtime cache is not existed, build it first
+```
+
+**原因**：还没有为当前模组集合构建过缓存，或模组集合已变化。
+
+**解决**：先点击 **build**，再点击 **launch**。
+
+### 构建失败 / 启动崩溃
+
+**解决**：展开错误对话框，复制堆栈信息；结合[故障排除](/players/troubleshooting/)查看常见错误。
+
+### 更新加载器或游戏
+
+更新 App 后，内置文件可能变化：先删除旧的内置文件或重新执行 **extract**，再重新 **build** 缓存。详细说明见[更新](/players/update/)。

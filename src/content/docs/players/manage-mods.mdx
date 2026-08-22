@@ -51,6 +51,10 @@ Found 3 mods.
 - **不要删除、改名或禁用**它，否则加载器无法正常工作（启动会报 `core mod is not found`）；
 - 升级加载器后首次启动会自动覆盖为匹配的新版本。
 
+<Aside type="note" title="原版模式下跳过 Copper 模组">
+	以**原版模式**（Android 启动器中的"原版模式"开关，对应 `--vanilla` 参数）构建/启动时，只加载核心模组与原版 Mindustry 模组，`copper/mods/` 下的其他 Copper 模组会被跳过（核心模组本身对游戏隐藏）。原版模式主要为 Android 启动器服务，桌面端一般无需使用（需要原版环境时直接运行官方 Jar 即可）。见[Android 版使用指南 · 原版模式](/players/android/#原版模式)。
+</Aside>
+
 ## 依赖与冲突
 
 Copper 在启动时**自动解析模组依赖与冲突**，无需玩家手动配置：

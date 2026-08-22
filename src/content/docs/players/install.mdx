@@ -1,11 +1,11 @@
 ---
-title: 安装
-description: 安装 Java、Mindustry 游戏与 Copper 加载器。
+title: 安装（桌面版）
+description: 在桌面（Windows / Linux / macOS）上安装 Copper 加载器的完整流程。
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components';
 
-本页介绍从零开始安装 Copper 的完整流程。
+本页介绍在 **桌面平台**（Windows / Linux / macOS）上从零安装 Copper 的完整流程。Android 设备的安装与使用见[Android 版使用指南](/players/android/)。
 
 ## 环境要求
 
@@ -54,7 +54,7 @@ java -version
 
 	```
 	CopperLoader v0.1.0
-	Game info: DESKTOP RELEASE 8.159.7
+	Game info: Desktop Release 8.159.7
 	Found N mods.
 	Launching game.
 	```
@@ -73,6 +73,7 @@ java -version
 | `-d` | `--debug` | 输出调试级日志 |
 | | `--verbose` | 输出更详细的日志 |
 | `-v` | `--version` | 仅显示加载器版本后退出 |
+| | `--vanilla` | 原版模式（主要为 Android 启动器服务，桌面端一般无需使用，见下方说明） |
 | | `--mixin-log <modId>` | 为指定模组启用 Mixin 审计日志 |
 | | `--mixin-flag <modId,flag1,...>` | 为指定模组添加 Mixin 环境标志 |
 
@@ -88,6 +89,10 @@ java -version
 	```bash
 	java -jar CopperLoader.jar -G mindustry.jar -- -server
 	```
+</Aside>
+
+<Aside type="note" title="--vanilla 原版模式">
+	`--vanilla` 参数主要为 **Android 启动器**服务：启动器必须经由加载器才能在应用内启动内置游戏。桌面端如需原版环境，直接运行官方 Mindustry Jar 即可，无需使用此参数。
 </Aside>
 
 ## 下一步

@@ -42,7 +42,7 @@ java -version
 
 	下载后把 Jar 放在一个方便的位置，例如 `C:\copper\mindustry.jar`。
 
-2. **下载加载器。** 从 [MDTCopper/loader 的 Release](https://github.com/MDTCopper/loader/releases) 下载最新版本的 `CopperLoader` Jar（类似 `CopperLoader-xxx.jar`），与游戏 Jar 放在同一个目录。
+2. **下载加载器。** 从 [MDTCopper/loader 的 Release](https://github.com/MDTCopper/loader/releases) 下载**桌面版**加载器 Jar，发布产物名为 `desktop-<版本>.jar`（例如 `desktop-0.1.1.jar`），与游戏 Jar 放在同一个目录。Release 中的 `android-<版本>.jar` 是 Android 端用的构建器 Jar，桌面端不需要；本文后续示例统一把它写作 `CopperLoader.jar`。
 
 3. **启动游戏。** 在命令行中进入存放 Jar 的目录，执行：
 
@@ -53,7 +53,7 @@ java -version
 	启动时控制台会打印类似下面的日志，表示加载器已初始化：
 
 	```
-	CopperLoader v0.1.0
+	CopperLoader v0.1.1
 	Game info: Desktop Release 8.159.7
 	Found N mods.
 	Launching game.
@@ -68,12 +68,14 @@ java -version
 
 | 参数 | 长参数 | 说明 |
 | ---- | ------ | ---- |
-| `-G <path>` | `--game-jar` | 游戏 Jar 文件路径（必填） |
+| `-G <path>` | `--game-jar` | 游戏 Jar 文件路径（必填，**可重复**，见下方说明） |
 | `-D <path>` | `--game-data` | 游戏数据目录（默认 `.mindustry`） |
+| | `--main <class>` | 指定游戏主类（默认按游戏 Jar 自动识别） |
+| | `--init` | 创建数据目录与模组文件夹后退出，不启动游戏 |
 | `-d` | `--debug` | 输出调试级日志 |
 | | `--verbose` | 输出更详细的日志 |
-| `-v` | `--version` | 仅显示加载器版本后退出 |
-| | `--vanilla` | 原版模式（主要为 Android 启动器服务，桌面端一般无需使用，见下方说明） |
+| `-v` | `--version` | 显示加载器版本后退出 |
+| | `--vanilla` | 原版模式：只加载原版 Mindustry 模组、核心模组与 Copper 插件（见下方说明） |
 | | `--mixin-log <modId>` | 为指定模组启用 Mixin 审计日志 |
 | | `--mixin-flag <modId,flag1,...>` | 为指定模组添加 Mixin 环境标志 |
 
@@ -84,6 +86,14 @@ java -version
 	java -jar CopperLoader.jar -G mindustry.jar -D ~/.mindustry
 	```
 
+	`-G` 可以**重复指定**：多个 Jar 会按顺序组成游戏容器的类路径，用于游戏本体被拆成多个 Jar、或需要额外补丁 Jar 的场景：
+
+	```bash
+	java -jar CopperLoader.jar -G mindustry.jar -G mindustry-patch.jar
+	```
+
+	`--main` 覆盖自动识别的游戏主类，仅在识别失败或需要自定义入口时使用。
+
 	`--` 之后的参数会原样转发给游戏本体（Mindustry 主类），例如：
 
 	```bash
@@ -92,7 +102,7 @@ java -version
 </Aside>
 
 <Aside type="note" title="--vanilla 原版模式">
-	`--vanilla` 参数主要为 **Android 启动器**服务：启动器必须经由加载器才能在应用内启动内置游戏。桌面端如需原版环境，直接运行官方 Mindustry Jar 即可，无需使用此参数。
+	`--vanilla` 参数主要为 **Android 启动器**服务：启动器必须经由加载器才能在应用内启动内置游戏。该模式下只加载原版 Mindustry 模组、核心模组与 Copper 插件，普通 Copper 模组会被跳过，自定义网络数据包也不会注册。桌面端如需纯净的原版环境，直接运行官方 Mindustry Jar 即可；若希望在原版游戏中保留插件，则使用此参数。
 </Aside>
 
 ## 下一步

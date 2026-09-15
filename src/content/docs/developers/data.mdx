@@ -46,10 +46,86 @@ public class ExampleMod extends CopperMod {
 
 - 设置文件位于模组数据目录（`<数据目录>/copper/datas/<作者-模组名>/`）；
 - 每个模组使用**独立的设置实例**，互不干扰；
+- **修改即保存**：`put()`、`remove()`、`clear()` 会立即把设置写回文件，不需要手动保存；
 - 底层使用 `CopperSettings`（`Settings` 子类）：它跳过了 Mindustry v146 中一次性的全局按键绑定重载，避免模组设置污染游戏全局按键数据。**你无需关心**，直接使用即可。
 
 <Aside type="note" title="为什么是独立实例？">
 	游戏自身和每个模组都用各自的 `Settings` 实例、各自的设置文件。这样模组的设置不会写进游戏的全局设置、也不会与其他模组互相覆盖，是加载器贯穿始终的隔离思路的一部分。附带的好处是：**自己的设置键不需要加模组名前缀**，直接写 `"myOption"` 即可，不会撞车。
+</Aside>
+
+## 游戏内设置页面
+
+模组的设置项可以直接显示在游戏的设置菜单里，不需要自己写弹窗。
+
+<Aside type="note" title="入口统一在「模组设置」">
+	Copper 会接管游戏设置菜单的构建：由模组创建的分类**不会**各自成为菜单里的一个顶层按钮，而是统一收进菜单顶部的 **「模组设置」** 页面——按模组分组、按模组名排序，并提供一个按模组名过滤的搜索框；无法识别归属的分类归入「未知模组」。玩家看到的入口固定是「设置 → 模组设置」。
+</Aside>
+
+### 创建分类
+
+用原版 API 注册分类即可，Copper 会自动识别它属于哪个模组：
+
+```java
+import arc.*;
+import copper.core.*;
+import copper.core.mod.*;
+import copper.core.util.*;
+import mindustry.Vars;
+import mindustry.ui.*;
+
+public class ExampleMod extends CopperMod {
+    public static Settings settings;
+    public static I18NBundle bundles;
+
+    public ExampleMod() {
+        settings = Copper.createSettings(ExampleMod.class);
+        bundles = Copper.createBundle(ExampleMod.class);
+    }
+
+    @Override
+    public void init() {
+        Vars.ui.settings.addCategory(bundles.get("settings.category"), Icon.settings, t -> {
+            CopperSettingsTable st = new CopperSettingsTable(settings, bundles);
+            st.checkPref("myOption", true);
+            st.sliderPref("myNumber", 50, 0, 100, 5, i -> i + "%");
+            t.add(st).grow();
+        });
+    }
+}
+```
+
+- 分类名用**自己的 bundle** 取本地化文本（`bundles.get("settings.category")`）。Copper 模组的 bundle 是独立实例、没有注册进游戏，因此这里不能像原版那样写 `@键名`，要自己把文本取出来；
+- 用 `CopperSettingsTable` 取代原版的 `SettingsTable`：原版表格的读写走游戏的全局 `Settings`，而 `CopperSettingsTable` 绑定到你传入的 `Settings` 实例与 bundle（见上文）；
+- 把它 `add` 进传入的 `t` 即可——`t` 是游戏自己创建的普通表格，只作为容器使用。
+
+### 设置项与文案
+
+`CopperSettingsTable` 提供与原版一致的一组方法：
+
+| 方法 | 说明 |
+| ---- | ---- |
+| `checkPref(name, def)` / `checkPref(name, def, changed)` | 勾选项，可选变更回调 |
+| `sliderPref(name, def, min, max, format)` / `sliderPref(name, def, min, max, step, format)` | 滑条，`format` 把数值转成显示文本 |
+| `textPref(name, def)` / `textPref(name, def, changed)` | 单行文本 |
+| `areaTextPref(name, def)` / `areaTextPref(name, def, changed)` | 多行文本 |
+| `pref(Setting)` | 自定义条目：继承 `CopperSettingsTable.Setting` 并实现 `add(table)` |
+
+条目的标题与说明同样从你传入的 bundle 读取，键的约定与原版一致：
+
+```properties
+settings.category = 示例模组
+
+setting.myOption.name = 启用某功能
+setting.myOption.description = 鼠标悬停时显示的说明。
+setting.myNumber.name = 数值
+```
+
+- `setting.<键名>.name`：条目标题；Windows 上若存在 `setting.<键名>.name.windows` 则优先使用（与原版一致）；
+- `setting.<键名>.description`：可选，鼠标悬停提示；
+- 表格底部会自动附带一个 **Reset to Defaults** 按钮，点击后删除该表格所有条目的值、恢复默认。
+
+<Aside type="tip" title="分类归属是怎么判定的">
+	Copper 通过创建分类的**容器类加载器**反查模组，因此只要分类的 builder 写在你自己的模组里，归属就是确定的。既不属于任何容器、也无法从调用栈推断出归属的分类，会被放进「未知模组」分组。
 </Aside>
 
 ## 资源文件

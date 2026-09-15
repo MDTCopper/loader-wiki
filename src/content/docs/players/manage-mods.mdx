@@ -25,6 +25,10 @@ Copper 会扫描**两个**模组文件夹：
 	两个文件夹的模组可以**共存**：Copper 兼容并加载原版 Mindustry 模组，同时为其提供容器级类加载支持。
 </Aside>
 
+<Aside type="note" title="只有 Java 模组会被 Copper 收录">
+	Copper 的容器、依赖解析与 Mixin 都建立在**Java 主类**之上，因此只收录带 Java 主类的模组。Copper 模组的元数据本来就要求 `main`，所以这条实际影响的是**原版 Mindustry 模组**：`mod.json` 里没有 `main`、或 `main` 指向的 `.class` 在 Jar 内不存在时，Copper 不会收录它——不计入 `Found N mods.`，也不能被其他模组依赖或选作 Mixin 目标。这类模组（例如纯 JS 脚本模组）的脚本仍由游戏自身的流程加载，行为不受影响。
+</Aside>
+
 ## 安装模组
 
 1. 下载模组 Jar（通常是 `.jar` 或 `.zip`）；
@@ -51,8 +55,19 @@ Found 3 mods.
 - **不要删除、改名或禁用**它，否则加载器无法正常工作（启动会报 `core mod is not found`）；
 - 升级加载器后首次启动会自动覆盖为匹配的新版本。
 
-<Aside type="note" title="原版模式下跳过 Copper 模组">
-	以**原版模式**（Android 启动器中的"原版模式"开关，对应 `--vanilla` 参数）构建/启动时，只加载核心模组与原版 Mindustry 模组，`copper/mods/` 下的其他 Copper 模组会被跳过（核心模组本身对游戏隐藏）。原版模式主要为 Android 启动器服务，桌面端一般无需使用（需要原版环境时直接运行官方 Jar 即可）。见[Android 版使用指南 · 原版模式](/players/android/#原版模式)。
+<Aside type="note" title="原版模式下只加载 Copper 插件">
+	以**原版模式**（Android 启动器中的"原版模式"开关，对应 `--vanilla` 参数）构建/启动时，只加载原版 Mindustry 模组、核心模组，以及 **Copper 插件**——即声明了 `"hidden": true` 的 Copper 模组；`copper/mods/` 下的普通 Copper 模组会被跳过，自定义网络数据包也不会注册。插件对标原版 Mindustry 的插件（Plugin）：只承载逻辑、不注册新内容，适合"必须随游戏一起运行"的配套模组。原版模式主要为 Android 启动器服务，桌面端一般无需使用（需要原版环境时直接运行官方 Jar 即可）。见[Android 版使用指南 · 原版模式](/players/android/#原版模式)。
+</Aside>
+
+## 游戏内模组设置
+
+Copper 在原版设置菜单的顶部增加了一个 **「模组设置」** 入口：各模组提供的设置分类都收在这里，按模组分组显示，并带一个按模组名过滤的搜索框。
+
+- 需要调整某个模组的选项时，进入「设置 → 模组设置」找到对应模组即可；
+- 修改会**立即写入**，不需要额外确认；Copper 模组的设置写在自己的数据目录（`<数据目录>/copper/datas/<作者-模组名>/`）里，与游戏的全局设置互不干扰。
+
+<Aside type="note" title="这不代表可以在游戏内管理模组">
+	游戏内依然**不能**导入、移除或启停模组——那些仍是文件层面的操作（见上文）。「模组设置」只是把模组自己提供的选项集中到一个页面，方便玩家调整。
 </Aside>
 
 ## 依赖与冲突

@@ -32,7 +32,7 @@ Copper 的模组模型由四层组成，请按顺序阅读：
 ### 主类与运行
 
 - **[主类与生命周期](/developers/main-class/)**：`CopperMod` 继承自原版 `Mod`，只做行为扩展。了解主类写法、静态 `bootstrap()` 与实例生命周期。
-- **[数据、设置与本地化](/developers/data/)**：配置文件、设置项、多语言 bundle 的正确用法。
+- **[数据、设置与本地化](/developers/data/)**：配置文件、设置项、游戏内设置页面与多语言 bundle 的正确用法。
 
 ### 依赖与可见性
 
@@ -60,6 +60,7 @@ Copper 的模组模型由四层组成，请按顺序阅读：
 | SemVer 版本过滤 | `^1.2.3`、`>=1.0.0 && <2.0.0` 等表达式 | [版本、依赖与冲突](/developers/versions/) |
 | 显式冲突 | 声明与哪些模组冲突 | [版本、依赖与冲突](/developers/versions/#冲突) |
 | 类隔离 | 每个模组一个容器，`exports`/`imports` 控制可见性 | [类隔离机制](/developers/class-visibility/) |
+| 游戏内模组设置 | 模组设置统一收进「模组设置」页面，可绑定模组自己的设置文件 | [数据、设置与本地化](/developers/data/#游戏内设置页面) |
 | Mixin 热修改 | 对游戏或模组字节码注入 | [Mixin 概述](/developers/mixin/) |
 | 扩展网络数据包 | 数据包上限 256 扩展到 65536 | [网络数据包](/developers/networking/) |
 | Android 支持 | 构建 dex 缓存后在设备上运行，Mixin 构建期注入 | [Android（ART）平台](/developers/android-art/) |

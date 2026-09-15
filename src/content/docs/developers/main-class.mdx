@@ -153,7 +153,7 @@ public class ExampleMod extends CopperMod {
 | `Copper.getDataFolder()` | 加载器数据目录（`<数据目录>/copper`） |
 | `Copper.getModsFolder()` | Copper 模组文件夹（`<数据目录>/copper/mods`） |
 | `Copper.getModsDataFolder()` | Copper 模组数据目录（`<数据目录>/copper/datas`） |
-| `Copper.getMod(Class)` | 通过主类查找对应模组描述符 |
+| `Copper.getMod(Class)` | 通过主类所在的容器查找对应模组描述符 |
 | `Copper.getModNonNull(Class)` | 同上，找不到时抛异常 |
 | `Copper.getModRoot(Class)` | 模组 Jar/目录的根 `Fi` |
 | `Copper.getModFile(Class, path)` | 模组内任意文件 |
@@ -163,8 +163,8 @@ public class ExampleMod extends CopperMod {
 | `Copper.createBundle(Class)` | 创建多语言 bundle（见[数据、设置与本地化](/developers/data/)） |
 | `Copper.translateModMeta(Class, bundle)` | 用 bundle 翻译模组元数据 |
 
-<Aside type="note" title="包名与 id 保持一致">
-	`Copper.getMod(Class)` 通过**包名前两段**推导模组 id：例如 `example.examplemod.SomeClass` 对应 id `example:examplemod`。因此请保持包名与 `id` 一致。
+<Aside type="note" title="模组是通过类加载器找到的">
+	`Copper.getMod(Class)` 用主类**所在的容器类加载器**反查模组，因此不再依赖包名。但 `main` 必须以 `id` 的点形式开头，这是[模组元数据](/developers/mod-meta/#main)本身的校验要求，仍需遵守。
 </Aside>
 
-详见[数据、设置与本地化](/developers/data/)中的使用示例。
+详见[数据、设置与本地化](/developers/data/)中的使用示例，以及其中的[游戏内设置页面](/developers/data/#游戏内设置页面)。

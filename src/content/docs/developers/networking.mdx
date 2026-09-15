@@ -104,7 +104,7 @@ public void handleServer(NetConnection con) {
 2. 子 id 按**注册顺序**分配：请确保客户端与服务端加载的模组集合一致，或约定好注册顺序；
 3. 自定义数据包的 `allow(boolean server)` 决定其在服务端/客户端的收发许可，按需覆写；
 4. 不要覆写 `getPriority()` 之外的原版行为语义——`ExtendedPacket` 会把优先级等委托给被包装的数据包；
-5. **原版模式下不可用**：`ExtendedPacket` 只在铜模组环境中注册，原版模式（`--vanilla`，主要为 Android 启动器服务）下不会注册，扩展数据包自然无法工作（见[Android 版使用指南 · 原版模式](/players/android/#原版模式)）。
+5. **原版模式下不可用**：`ExtendedPacket` 只在铜模组环境中注册；原版模式（`--vanilla`，主要为 Android 启动器服务）下不会调用 `registerPackets()`，扩展数据包自然无法工作（见[Android 版使用指南 · 原版模式](/players/android/#原版模式)）。
 
 ## 相关 API
 

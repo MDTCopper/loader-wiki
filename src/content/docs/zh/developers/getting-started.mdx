@@ -15,7 +15,8 @@ import { Steps, Aside, FileTree } from '@astrojs/starlight/components';
 - my-mod/
 	- build.gradle
 	- settings.gradle
-	- copper.mod.json — 模组元数据（必填）
+	- copper.mod.json — 模组元数据（必填；HJSON 写法为 copper.mod.hjson）
+	- icon.png — 模组图标（可选）
 	- res/
 		- assets/  — 原版资源：游戏按原版规则加载
 			- bundles/
@@ -31,11 +32,13 @@ import { Steps, Aside, FileTree } from '@astrojs/starlight/components';
 					- MyPatch.java — Mixin 类（可选）
 </FileTree>
 
+`icon.png` 是**可选**的：没有它模组照常加载，只是不会显示模组图标。
+
 与 Mindustry 官方模板的差异：
 
-- 元数据文件是 **`copper.mod.json`**（不是 `mod.hjson`），且格式完全不同（见[模组元数据](/developers/mod-meta/)）；
-- 主类需要继承 **`CopperMod`**（见[主类与生命周期](/developers/main-class/)）；
-- 资源布局上，`assets/` 会被挂载为原版 `LoadedMod` 的资源根，因此原版模组资源（`bundles/`、`sprites/`、`content/` 等）放在 `assets/` 下，而 Copper 自己的资源（Mixin 配置等）放在 `assets/copper/` 下，两者互不干扰（详见[数据、设置与本地化 · 资源文件](/developers/data/#资源文件)）。
+- 元数据文件是 **`copper.mod.json`**（HJSON 写法则是 **`copper.mod.hjson`**），且格式与原版的 `mod.hjson` **完全不同**（见[模组元数据](/zh/developers/mod-meta/)）；
+- 主类需要继承 **`CopperMod`**（见[主类与生命周期](/zh/developers/main-class/)）；
+- 资源布局上，`assets/` 会被挂载为原版 `LoadedMod` 的资源根，因此原版模组资源（`bundles/`、`sprites/`、`content/` 等）放在 `assets/` 下，而 Copper 自己的资源（Mixin 配置等）放在 `assets/copper/` 下，两者互不干扰（详见[数据、设置与本地化 · 资源文件](/zh/developers/data/#资源文件)）。
 
 ## build.gradle
 
@@ -54,11 +57,11 @@ sourceSets {
 repositories {
     mavenLocal()
     mavenCentral()
-    maven { url 'https://www.jitpack.io' }
+    maven { url = 'https://www.jitpack.io' }
 }
 
 ext {
-    copperVersion = '0.1.1'
+    copperVersion = 'snapshot'
     // 从 https://github.com/MDTCopper/loader/blob/<copperVersion>/gradle.properties 获取
     mixinVersion = '0.1.4'
     gameVersion = 'v159.7'
@@ -82,6 +85,7 @@ jar {
     }
     from (projectDir) {
         include 'copper.mod.json', 'copper.mod.hjson'
+        include 'icon.png'
     }
     duplicatesStrategy = DuplicatesStrategy.WARN
 }
@@ -92,7 +96,7 @@ jar {
 - 通过 **jitpack** 依赖 `loader:core`（加载器核心，含 `copper.loader.*`）与 `loader:mod`（模组侧 API，含 `copper.core.mod.CopperMod`）；
 - `annotationProcessor` 需要 **Mixin 注解处理器**（`com.github.MDTCopper:Mixin:<mixinVersion>:processor`），用于编译期检查 Mixin 注解的正确性；
 - `compileOnly` 意味着这些依赖不会被打进 Jar——Copper 模组在运行时由加载器提供这些类；
-- Jar 打包时把 `copper.mod.json` 放到 Jar 根目录。
+- Jar 打包时把 `copper.mod.json`（或 `copper.mod.hjson`）与 `icon.png` 放到 Jar 根目录。
 
 <Aside type="note" title="版本同步">
 	`copperVersion` 与 `mixinVersion` 需要匹配。mixin 版本号写在对应加载器版本仓库的 `gradle.properties` 里（`mixinVersion=...`）。
@@ -114,7 +118,7 @@ public class ExampleMod extends CopperMod {
 }
 ```
 
-`registerPackets()` 等扩展方法都是可选的，需要时才覆写（见[主类与生命周期](/developers/main-class/)）。
+`registerPackets()` 等扩展方法都是可选的，需要时才覆写（见[主类与生命周期](/zh/developers/main-class/)）。
 
 ## 构建与安装
 
@@ -127,7 +131,7 @@ public class ExampleMod extends CopperMod {
 
 	产物是 `build/libs/my-mod-<version>.jar`。
 
-2. **放入模组文件夹。** 把 Jar 复制到 `<数据目录>/copper/mods/`（见[管理模组](/players/manage-mods/)）。
+2. **放入模组文件夹。** 把 Jar 复制到 `<数据目录>/copper/mods/`（见[使用桌面版 · 模组放在哪里](/zh/players/desktop/#模组放在哪里)）。
 
 3. **启动验证。** 启动游戏，日志中应出现：
 
@@ -138,6 +142,6 @@ public class ExampleMod extends CopperMod {
 
 ## 下一步
 
-- 完整掌握元数据语法：[模组元数据](/developers/mod-meta/)
-- 了解主类的全部能力：[主类与生命周期](/developers/main-class/)
-- 为模组添加第一个 Mixin：[Mixin 入门教程](/developers/mixin/intro/)
+- 完整掌握元数据语法：[模组元数据](/zh/developers/mod-meta/)
+- 了解主类的全部能力：[主类与生命周期](/zh/developers/main-class/)
+- 为模组添加第一个 Mixin：[Mixin 入门教程](/zh/developers/mixin/intro/)

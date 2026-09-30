@@ -20,7 +20,7 @@ Mixin 通过字节码注入直接修改目标类的行为，让上述需求成�
 
 Copper 的 Mixin 体系由三部分组成：
 
-1. **Mixin 框架本体**（`org.spongepowered.asm.*`）：基于 SpongePowered Mixin 0.8.7 修改的版本（见[与 Minecraft Mixin 的差异](/developers/mixin/copper-differences/)）；
+1. **Mixin 框架本体**（`org.spongepowered.asm.*`）：基于 SpongePowered Mixin 0.8.7 修改的版本（见[与 Minecraft Mixin 的差异](/zh/developers/mixin/copper-differences/)）；
 2. **加载器集成**：每个容器（模组/游戏）在初始化时启动 Mixin 引擎，按配置应用注入；
 3. **模组侧的配置**：通过 `copper.mod.json` 的 `mixins` 字段 + `assets/copper/` 下的配置文件声明注入内容。
 
@@ -36,7 +36,7 @@ flowchart TD
 
 - **注入目标**：`mindustry`（游戏）或任意已安装模组；
 - **应用时机**：目标容器初始化时，Mixin 引擎就绪；目标类**首次被加载**时完成注入；
-- **版本过滤**：Mixin 配置可以按目标的版本号选择不同的注入（见[配置 JSON 详解](/developers/mixin/config/)）。
+- **版本过滤**：Mixin 配置可以按目标的版本号选择不同的注入（见[配置 JSON 详解](/zh/developers/mixin/config/)）。
 
 ## 你能注入什么
 
@@ -54,11 +54,11 @@ Copper 的 Mixin 支持 SpongePowered Mixin 的主流能力：
 | `@Accessor` / `@Invoker` | 生成访问器/调用器接口 |
 | `@Unique` | 声明成员绝不覆写目标成员，冲突时自动重命名/丢弃 |
 
-> 完整能力请阅读[入门教程](/developers/mixin/intro/)与[注解参考手册](/developers/mixin/reference/)。
+> 完整能力请阅读[入门教程](/zh/developers/mixin/intro/)与[注解参考手册](/zh/developers/mixin/reference/)。
 
 ## 阅读路线
 
-- 如果完全没接触过 Mixin，从[入门教程](/developers/mixin/intro/)开始读起；
-- 已经会写 Mixin，直接看[配置 JSON 详解](/developers/mixin/config/)与[与 Minecraft Mixin 的差异](/developers/mixin/copper-differences/)；
-- 需要查注解用法，查[注解参考手册](/developers/mixin/reference/)；
-- 想快速看例子，看[Mixin 示例](/developers/mixin/examples/)。
+- 如果完全没接触过 Mixin，从[入门教程](/zh/developers/mixin/intro/)开始读起；
+- 已经会写 Mixin，直接看[配置 JSON 详解](/zh/developers/mixin/config/)与[与 Minecraft Mixin 的差异](/zh/developers/mixin/copper-differences/)；
+- 需要查注解用法，查[注解参考手册](/zh/developers/mixin/reference/)；
+- 想快速看例子，看[Mixin 示例](/zh/developers/mixin/examples/)。

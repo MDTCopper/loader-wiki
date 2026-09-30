@@ -1,0 +1,58 @@
+name: Deploy Wiki to GitHub Pages
+
+on:
+  # 推送到主分支时触发部署
+  push:
+    branches: ["main"]
+  # 允许在 Actions 页面手动触发
+  workflow_dispatch:
+
+# GitHub Pages 部署所需权限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只允许一个部署任务，排队而不是互相取消
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Astro 7 要求 Node >= 22.12.0（见 node_modules/astro/package.json 的 engines），
+      # 不要降回 20，否则构建会直接失败。
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build static site
+        run: npm run build
+
+      # 产物目录是 Astro 默认的 dist/（不是 build/，也不是 site/）
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    needs: build
+    runs-on: ubuntu-latest
+    name: Deploy
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

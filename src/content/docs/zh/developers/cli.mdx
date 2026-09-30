@@ -1,0 +1,110 @@
+---
+title: 加载器命令行
+description: 直接运行桌面版加载器 Jar 的启动方式与参数参考。
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+玩家通过 [Copper Launcher](/zh/players/desktop/) 使用 Copper，不需要命令行。本页面向需要直接运行加载器 Jar 的场景：调试模组、写脚本，或把加载器集成进自己的启动方式。
+
+## 准备
+
+1. **游戏 Jar**：官方发布的**桌面版** Jar，例如从 [Mindustry 官方仓库 Release](https://github.com/Anuken/Mindustry/releases) 下载的 `Mindustry-Desktop-xxx.jar`，或 [MindustryBuilds](https://github.com/Anuken/MindustryBuilds/releases) 的 BE 构建。
+2. **加载器 Jar**：从 [MDTCopper/loader 的 Release](https://github.com/MDTCopper/loader/releases) 下载桌面端产物——带版本号的**发行版** `desktop-<版本>.jar`（固定不动，例如 `desktop-0.2.0.jar`），或者每次 push 都会重建的**快照** `desktop-snapshot.jar`（两者区别见下文）。`android-<版本>.jar` / `android-snapshot.jar` 是 Android 端用的构建器产物，桌面端不需要。本文后续示例统一把桌面产物写作 `CopperLoader.jar`。
+3. **Java 17 或更高版本**：Copper 的 Mixin 引擎要求 Java 17+。用更低的版本启动会直接失败并抛出 `UnsupportedClassVersionError`（见[启动报错 · Java 版本问题](/zh/developers/startup-errors/#java-版本问题)）。
+
+## 启动
+
+把两个 Jar 放在同一个目录，执行：
+
+```bash
+java -jar CopperLoader.jar -G mindustry.jar
+```
+
+启动时控制台会打印类似下面的日志，表示加载器已初始化：
+
+```
+CopperLoader v0.2.0
+Game info: Desktop Release 8.159.7
+Found N mods.
+Launching game.
+```
+
+<Aside type="tip" title="首次启动">
+	首次启动时，Copper 会在模组文件夹中自动释放**核心模组**（`copper-core.jar`）。不要删除它，它是加载器的组成部分。
+</Aside>
+
+## 发行版与快照
+
+首行就是加载器的版本标签，据此可以分辨手里这份是哪种构建：
+
+| 构建 | 首行 |
+| ---- | ---- |
+| 发行版（`-Prelease` 构建） | `CopperLoader v0.2.0` |
+| 快照，且它对应的 commit 远程上有 | `CopperLoader snapshot+a1b2c3d` |
+| 快照，工作区有改动或提交只有本地有 | `CopperLoader snapshot+custom` |
+
+`-v` / `--version` 打印的是同一个标签。
+
+<Aside type="note" title="快照不显示数字版本">
+	不带 `-Prelease` 的构建一律是快照，只带 commit 或 `custom` 标记。它内部**仍然**带着 `gradle.properties` 里声明的数字版本——那是给模组依赖检查比较用的：模组声明 `"loader": ">=0.2.0"` 时按它判断，与显示出来的标签无关。
+</Aside>
+
+## 参数
+
+| 参数 | 长参数 | 说明 |
+| ---- | ------ | ---- |
+| `-G <path>` | `--game-jar` | 游戏 Jar **或目录**的类路径（必填，**可重复**） |
+| `-D <path>` | `--game-data` | 游戏数据目录（默认当前工作目录下的 `.mindustry`） |
+| | `--main <class>` | 指定游戏主类（默认按游戏 Jar 自动识别） |
+| | `--init` | 创建数据目录与模组文件夹后退出，不启动游戏 |
+| `-d` | `--debug` | 输出调试级日志 |
+| | `--verbose` | 输出更详细的日志 |
+| `-v` | `--version` | 打印加载器的版本标签后退出 |
+| | `--vanilla` | 原版模式：只加载原版 Mindustry 模组、核心模组与 Copper 插件（见下文） |
+| | `--mixin-log <modId>` | 为指定模组启用 Mixin 审计日志 |
+| | `--mixin-flag <modId,flag1,...>` | 为指定模组添加 Mixin 环境标志 |
+
+<Aside type="note" title="三个容易踩的点">
+	**`-G` 可以重复指定**：多个条目会按顺序组成游戏容器的类路径，用于游戏本体被拆成多个 Jar、需要额外补丁 Jar，或直接拿**解压出来的目录**当类路径的场景。Jar 与目录都认：
+
+	```bash
+	java -jar CopperLoader.jar -G mindustry.jar -G mindustry-patch.jar
+	java -jar CopperLoader.jar -G ./mindustry-extracted
+	```
+
+	**`-D` 只影响数据目录**：不指定时默认为当前工作目录下的 `.mindustry`，与启动器里的默认位置不是一回事（见[使用桌面版 · 模组放在哪里](/zh/players/desktop/#模组放在哪里)）。
+
+	**`--` 之后的参数原样转发给游戏本体**（Mindustry 主类），例如：
+
+	```bash
+	java -jar CopperLoader.jar -G mindustry.jar -- -server
+	```
+
+	`--main` 覆盖自动识别的游戏主类，仅在识别失败或需要自定义入口时使用。
+</Aside>
+
+## 原版模式
+
+`--vanilla` 让加载器**只启动原版游戏、跳过普通 Copper 模组**：
+
+- 加载原版 Mindustry 模组、核心模组，以及 Copper **插件**——即声明了 `"hidden": true` 的 Copper 模组（见[模组元数据 · hidden](/zh/developers/mod-meta/#hidden)）；
+- 自定义网络数据包不会注册（不会调用 `registerPackets()`），避免与原版联机协议冲突；
+- 游戏内版本号会附加 `(vanilla mode)` 标记。
+
+桌面端需要纯净的原版环境时，直接运行官方 Mindustry Jar 即可；**希望在原版游戏中保留插件**时才需要它，这也是 Android 端需要它的原因（见 [Android（ART）平台](/zh/developers/android-art/#原版模式)）。
+
+## 日志与调试
+
+| 想要什么 | 用什么 |
+| -------- | ------ |
+| 更详细的加载器日志 | `-d`（调试）或 `--verbose`（详细） |
+| 某个模组的 Mixin 注入过程 | `--mixin-log <modId>` |
+| 为某个模组加 Mixin 环境标志 | `--mixin-flag <modId,flag1,...>` |
+| 按报错找原因 | [启动报错](/zh/developers/startup-errors/) |
+
+启动日志写在数据目录下的 `last_log.txt`，出错时可以先看它。
+
+## Android 端
+
+Android 不使用这个 Jar：`desktop-<版本>.jar` 是桌面端产物，Android 端用的是加载器的 Android 构建器产物 `android-<版本>.jar`，运行方式由启动器安排。两条 Android 实现路线见 [Android（ART）平台](/zh/developers/android-art/) 与 [android-bridge 平台](/zh/developers/android-bridge/)。

@@ -24,7 +24,7 @@ public class ExampleMod extends CopperMod {
 }
 ```
 
-Copper 模组的配置文件夹位于 **`<数据目录>/copper/datas/<作者-模组名>/`**（与 `id` 对应，冒号换连字符），与原版模组不同（见[主类与生命周期 · 配置文件夹的差异](/developers/main-class/#配置文件夹的差异)）。
+Copper 模组的配置文件夹位于 **`<数据目录>/copper/datas/<作者-模组名>/`**（与 `id` 对应，冒号换连字符），与原版模组不同（见[主类与生命周期 · 配置文件夹的差异](/zh/developers/main-class/#配置文件夹的差异)）。
 
 ## 设置项
 
@@ -156,7 +156,7 @@ Fi root = Copper.getModRoot(ExampleMod.class);
 ```
 
 - 模组目录内**非 assets** 的文件用 `Copper.getModFile(clazz, path)` 访问；
-- 图片等资源按原版规则注册到 Atlas（sprite 名前缀为 `copper-<作者-模组名>-`，与游戏内注册的模组名一致）。
+- 图片等资源按原版规则注册到 Atlas（sprite 名前缀为 `copper-<作者-模组名>-`，与游戏内注册的模组名一致；命名细节与例外见[命名与映射 · 贴图文件名](/zh/developers/naming/#贴图文件名)）。
 
 <Aside type="note" title="Jar 与目录形态都能工作">
 	`Copper.getModAssetFolder()` 返回的 `Fi` 在 Jar 与目录两种形态下都能工作（Jar 内部自动走 `ZipFi`），无需区分。
@@ -194,7 +194,9 @@ public class ExampleMod extends CopperMod {
 - 建议把 bundle 存为**静态字段**，在主类构造器中创建。
 
 <Aside type="note" title="为什么不用游戏的全局 bundle？">
-	与设置项同理：模组拥有**自己独立的 bundle 实例**，不会与游戏自带的翻译、其他模组的翻译互相污染；而且自己的 bundle 里**不需要给键加模组名前缀**，直接写 `mod.name`、`subtitle` 这样的键即可。如果你把内容写进游戏的全局 bundle，反而需要加前缀避免冲突，还要承担与游戏更新合并时的风险。
+	与设置项同理：模组拥有**自己独立的 bundle 实例**，不会与游戏自带的翻译、其他模组的翻译互相污染；而且自己的 bundle 里**不需要给键加模组名前缀**，直接写 `mod.name`、`subtitle` 这样的键即可。
+
+	但这只适用于**你自己显示**的文本。凡是**游戏自己要显示**的内容——注册的方块 / 物品 / 单位等内容的名称、描述、详情、致谢——游戏一律从**全局 bundle** 取，因此这些键仍然必须注册进游戏原本的 bundle：把它们写在 **`assets/bundles/bundle_<语言>.properties`** 里（游戏会把模组 `bundles/` 下的 `bundle*.properties` 合并进全局 bundle），键则按 `<类型>.<内容名>.name` 拼写。内容名与键的完整算法见[命名与映射](/zh/developers/naming/#内容名与-bundle-键)。
 </Aside>
 
 ### 翻译模组元数据
@@ -231,4 +233,4 @@ subtitle = My Subtitle
 | 单个模组的配置/设置目录 | `<数据目录>/copper/datas/<作者-模组名>` |
 | 原生库（自动解压） | `<数据目录>/copper/lib` |
 
-`copper.core.Copper` 提供对应访问方法（见[主类与生命周期 · 模组上下文工具类](/developers/main-class/#模组上下文工具类)）。
+`copper.core.Copper` 提供对应访问方法（见[主类与生命周期 · 模组上下文工具类](/zh/developers/main-class/#模组上下文工具类)）。

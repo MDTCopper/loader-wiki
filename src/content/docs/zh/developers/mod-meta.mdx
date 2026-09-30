@@ -78,6 +78,8 @@ Copper 模组使用 **`copper.mod.json`**（或 `copper.mod.hjson`）作为元�
 - 允许的字符遵循 Java 包命名规则：字母、数字、下划线；**禁止**空格、点（`.`）、连字符（`-`）、逗号（`,`）；
 - 不允许以 `mindustry:` 开头、不允许等于 `mindustry`、不允许以 `loader:` 开头、不允许等于 `loader`（这些是保留 id）。
 
+这个 `id` 决定模组在原版模组系统里的名字、内容的 bundle 键与数据目录，映射规则见[命名与映射](/zh/developers/naming/)。
+
 ```json
 "id": "example:examplemod"
 ```
@@ -101,13 +103,13 @@ Copper 模组使用 **`copper.mod.json`**（或 `copper.mod.hjson`）作为元�
 "main": "example.examplemod.ExampleMod"
 ```
 
-- 主类必须继承 `CopperMod`（见[主类与生命周期](/developers/main-class/)）。
+- 主类必须继承 `CopperMod`（见[主类与生命周期](/zh/developers/main-class/)）。
 
 ### version
 
 - 类型：字符串
 - **语义化版本（SemVer）**，形如 `X.Y.Z`（缺省分量按 0 处理，如 `"1.2"` 等价于 `1.2.0`）；
-- 这是依赖系统比较版本的基础（见[版本、依赖与冲突](/developers/versions/)）。
+- 这是依赖系统比较版本的基础（见[版本、依赖与冲突](/zh/developers/versions/)）。
 
 ```json
 "version": "1.0.0"
@@ -125,7 +127,7 @@ Copper 模组使用 **`copper.mod.json`**（或 `copper.mod.hjson`）作为元�
 - 类型：布尔值，默认 `false`
 - 为 `true` 表示隐藏模组：仅作服务端或客户端逻辑，**不能注册新的游戏内容**（方块、物品等）；
 - 隐藏模组在语义上对标原版 Mindustry 的**插件**（Plugin）：只承载逻辑、对玩家隐藏；
-- **原版模式**下只加载隐藏模组（插件）与核心模组，普通 Copper 模组会被跳过，因此必须随游戏一起运行的配套逻辑应当做成隐藏模组，见[Android（ART）平台 · 原版模式](/developers/android-art/#原版模式)。
+- **原版模式**下只加载隐藏模组（插件）与核心模组，普通 Copper 模组会被跳过，因此必须随游戏一起运行的配套逻辑应当做成隐藏模组，见[Android（ART）平台 · 原版模式](/zh/developers/android-art/#原版模式)。
 
 ### repo
 
@@ -144,7 +146,7 @@ Copper 模组使用 **`copper.mod.json`**（或 `copper.mod.hjson`）作为元�
 ### dependencies
 
 - 类型：对象（映射：模组 id → 版本过滤条件）
-- 声明本模组依赖的其他模组及其版本要求。版本过滤条件的写法见[版本、依赖与冲突](/developers/versions/#版本过滤条件写法)。
+- 声明本模组依赖的其他模组及其版本要求。版本过滤条件的写法见[版本、依赖与冲突](/zh/developers/versions/#版本过滤条件写法)。
 
 ```json
 "dependencies": {
@@ -179,7 +181,7 @@ Copper 模组使用 **`copper.mod.json`**（或 `copper.mod.hjson`）作为元�
 
 | | 目标存在且版本匹配 | 目标不存在 |
 | - | ----------------- | ---------- |
-| `dependencies` | 通过（并建立类可见性，见[类隔离机制](/developers/class-visibility/)） | **报错**：找不到依赖 |
+| `dependencies` | 通过（并建立类可见性，见[类隔离机制](/zh/developers/class-visibility/)） | **报错**：找不到依赖 |
 | `conflicts` | **报错**：模组冲突 | 通过 |
 
 ### exports
@@ -210,7 +212,7 @@ Copper 模组使用 **`copper.mod.json`**（或 `copper.mod.hjson`）作为元�
 }
 ```
 
-> 行为细节与典型用法见[类隔离机制 · 导入规则](/developers/class-visibility/#imports-导入规则)。
+> 行为细节与典型用法见[类隔离机制 · 导入规则](/zh/developers/class-visibility/#imports-导入规则)。
 
 ### mixins
 
@@ -218,7 +220,7 @@ Copper 模组使用 **`copper.mod.json`**（或 `copper.mod.hjson`）作为元�
 - 声明本模组要注入的目标，以及对应的 Mixin 配置文件路径；
 - **目标 id** 可以是 `mindustry`（游戏本体）或任意已安装模组的 id（包括其他 Copper 模组，也包括原版 Mindustry 模组，如 `mindustry:new-horizon`）；
 - **配置路径**是相对于 `assets/copper/` 的文件路径，例如 `"mixins/mindustry.json"` 实际指向 Jar 内的 `assets/copper/mixins/mindustry.json`；
-- 配置文件的语法见[Mixin 配置 JSON 详解](/developers/mixin/config/)。
+- 配置文件的语法见[Mixin 配置 JSON 详解](/zh/developers/mixin/config/)。
 
 ```json
 "mixins": {

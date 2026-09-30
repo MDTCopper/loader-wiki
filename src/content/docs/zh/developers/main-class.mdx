@@ -14,7 +14,7 @@ public abstract class CopperMod extends Mod {
 }
 ```
 
-`CopperMod` 目前只新增了一个可覆写的方法：`registerPackets()`（见[网络数据包](/developers/networking/)），且它**是可选的**——不覆写也不影响模组加载。其余全部来自原版 `Mod`。
+`CopperMod` 目前只新增了一个可覆写的方法：`registerPackets()`（见[网络数据包](/zh/developers/networking/)），且它**是可选的**——不覆写也不影响模组加载。其余全部来自原版 `Mod`。
 
 ## 原版 Mod 的能力
 
@@ -90,7 +90,7 @@ sequenceDiagram
 
 - 主类通过**无参构造器**实例化；
 - 实例化后，Mindustry 按原版时机调用 `init()`、`loadContent()` 等钩子；
-- 所有启用的模组加载完成后，`registerPackets()` 被调用，用于注册网络数据包（见[网络数据包](/developers/networking/)）。
+- 所有启用的模组加载完成后，`registerPackets()` 被调用，用于注册网络数据包（见[网络数据包](/zh/developers/networking/)）。
 
 ### 生命周期要点
 
@@ -107,10 +107,10 @@ sequenceDiagram
 
 为了让 Copper 模组以"原生"身份出现在 Mindustry 的模组管理器中，系统做了以下行为调整，你通常不需要关心，但了解后可以解释一些现象：
 
-- 模组在游戏内的内部名称形如 `copper-<作者-模组名>`（如 `copper-example-examplemod`）；
-- 游戏版本兼容性检查**改由 Copper 的依赖系统完成**（见[版本、依赖与冲突](/developers/versions/)），原版的 `isOutdated` / `isSupported` 检查被绕过；
+- 模组在游戏内的内部名称形如 `copper-<作者-模组名>`（如 `copper-example-examplemod`），完整映射见[命名与映射](/zh/developers/naming/)；
+- 游戏版本兼容性检查**改由 Copper 的依赖系统完成**（见[版本、依赖与冲突](/zh/developers/versions/)），原版的 `isOutdated` / `isSupported` 检查被绕过；
 - Copper 模组自动获得对核心模组的依赖；
-- 游戏内模组管理（移除/启停/导入）被禁用，见[管理模组](/players/manage-mods/)。
+- 游戏内模组管理（移除/启停/导入）被禁用，见[使用桌面版 · 游戏内不能管理模组](/zh/players/desktop/#游戏内不能管理模组)。
 
 ## 主类的常用写法
 
@@ -160,11 +160,11 @@ public class ExampleMod extends CopperMod {
 | `Copper.getModAssetFolder(Class)` | 模组的 `assets` 文件夹 |
 | `Copper.getModAsset(Class, path)` | 模组 `assets` 下的文件 |
 | `Copper.createSettings(Class)` | 创建绑定到模组数据目录的 `Settings` 实例 |
-| `Copper.createBundle(Class)` | 创建多语言 bundle（见[数据、设置与本地化](/developers/data/)） |
+| `Copper.createBundle(Class)` | 创建多语言 bundle（见[数据、设置与本地化](/zh/developers/data/)） |
 | `Copper.translateModMeta(Class, bundle)` | 用 bundle 翻译模组元数据 |
 
 <Aside type="note" title="模组是通过类加载器找到的">
-	`Copper.getMod(Class)` 用主类**所在的容器类加载器**反查模组，因此不再依赖包名。但 `main` 必须以 `id` 的点形式开头，这是[模组元数据](/developers/mod-meta/#main)本身的校验要求，仍需遵守。
+	`Copper.getMod(Class)` 用主类**所在的容器类加载器**反查模组，因此不再依赖包名。但 `main` 必须以 `id` 的点形式开头，这是[模组元数据](/zh/developers/mod-meta/#main)本身的校验要求，仍需遵守。
 </Aside>
 
-详见[数据、设置与本地化](/developers/data/)中的使用示例，以及其中的[游戏内设置页面](/developers/data/#游戏内设置页面)。
+详见[数据、设置与本地化](/zh/developers/data/)中的使用示例，以及其中的[游戏内设置页面](/zh/developers/data/#游戏内设置页面)。

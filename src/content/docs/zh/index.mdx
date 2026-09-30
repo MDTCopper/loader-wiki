@@ -4,12 +4,14 @@ description: Copper 模组加载器的官方文档，涵盖安装、使用与模
 template: splash
 hero:
   tagline: 为 Mindustry 带来 Minecraft 同款 Mixin 热修改能力的模组加载器
+  # 注意：hero 的 link 由 Starlight 原样输出，不经过 rehypeBaseLinks（该插件只处理正文），
+  # 所以这两处必须显式带上 base，改动 astro.config.mjs 里的 BASE 时要一起改。
   actions:
     - text: 玩家快速上手
-      link: /players/install/
+      link: /loader-wiki/zh/players/desktop/
       icon: download
     - text: 开发者快速开始
-      link: /developers/getting-started/
+      link: /loader-wiki/zh/developers/getting-started/
       icon: rocket
 ---
 
@@ -21,31 +23,28 @@ Copper 是在 Mindustry 官方模组系统基础上扩展的模组加载器。�
 
 <CardGrid stagger>
 	<Card title="玩家指南" icon="open-book">
-		面向玩家与服务器管理员：如何安装 Copper 与模组、如何更新、如何管理模组，以及常见问题的排查方法。
+		面向玩家与服务器管理员：在桌面与 Android 设备上使用 Copper、管理模组，以及常见问题的处理。
 
-		- [总览](/players/)
-		- [安装（桌面版）](/players/install/)
-		- [Android 版使用](/players/android/)
-		- [更新](/players/update/)
-		- [管理模组](/players/manage-mods/)
-		- [故障排除](/players/troubleshooting/)
+		- [总览](/zh/players/)
+		- [使用桌面版](/zh/players/desktop/)
+		- [使用移动版](/zh/players/mobile/)
 	</Card>
 	<Card title="开发者指南" icon="pencil">
 		面向模组作者。假定你已具备 Mindustry 官方模组开发基础；在此基础上循序渐进地介绍 Copper 的元数据、依赖与版本控制、类隔离机制等新特性。
 
-		- [总览与阅读顺序](/developers/)
-		- [快速开始](/developers/getting-started/)
-		- [模组元数据](/developers/mod-meta/)
-		- [版本、依赖与冲突](/developers/versions/)
-		- [类隔离机制](/developers/class-visibility/)
+		- [总览与阅读顺序](/zh/developers/)
+		- [快速开始](/zh/developers/getting-started/)
+		- [模组元数据](/zh/developers/mod-meta/)
+		- [版本、依赖与冲突](/zh/developers/versions/)
+		- [类隔离机制](/zh/developers/class-visibility/)
 	</Card>
-	<Card title="Mixin 专题" icon="shapes">
+	<Card title="Mixin 专题" icon="puzzle">
 		Mixin 的完整入门教程、Copper 版 Mixin 配置语法、与 Minecraft 版的差异，以及注解参考手册。
 
-		- [Mixin 概述](/developers/mixin/)
-		- [入门教程](/developers/mixin/intro/)
-		- [配置 JSON 详解](/developers/mixin/config/)
-		- [注解参考手册](/developers/mixin/reference/)
+		- [Mixin 概述](/zh/developers/mixin/)
+		- [入门教程](/zh/developers/mixin/intro/)
+		- [配置 JSON 详解](/zh/developers/mixin/config/)
+		- [注解参考手册](/zh/developers/mixin/reference/)
 	</Card>
 </CardGrid>
 

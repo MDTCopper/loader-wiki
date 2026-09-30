@@ -94,7 +94,7 @@ Copper 的 Mixin 配置**不是**原版 Mixin 的 `mixins.json` 格式。它在�
 **行为：**
 
 1. 加载器取目标的版本号（例如游戏版本 `8.159.7`）；
-2. 逐条把键当作版本过滤器（语法与[版本、依赖与冲突](/developers/versions/#semver-过滤器表达式语法)完全一致）进行匹配；
+2. 逐条把键当作版本过滤器（语法与[版本、依赖与冲突](/zh/developers/versions/#semver-过滤器表达式语法)完全一致）进行匹配；
 3. **所有匹配**的条目被合并进一个数组（去重），作为最终生效的 Mixin 列表：
    - 值为字符串，则加入单个类名；
    - 值为数组，则逐项加入（去重）。
@@ -127,12 +127,12 @@ Copper 的 Mixin 配置**不是**原版 Mixin 的 `mixins.json` 格式。它在�
 除 `mixins` 外的其他标准 Mixin 配置字段（`priority`、`compatibilityLevel`、`plugin`、`injectors`、`overwrites`、`refmap`、`verbose`、`setSourceFile` 等）会被**原样透传**给 Mixin 引擎，按原版语义生效。
 
 <Aside type="note" title="target 字段通常无需书写">
-	`target` 字段（目标选择器）在本项目中被修改为默认 `@env(DEFAULT)`，通常无需书写（见[与 Minecraft Mixin 的差异](/developers/mixin/copper-differences/)）。
+	`target` 字段（目标选择器）在本项目中被修改为默认 `@env(DEFAULT)`，通常无需书写（见[与 Minecraft Mixin 的差异](/zh/developers/mixin/copper-differences/)）。
 </Aside>
 
 ## 版本过滤器写法速查
 
-键的写法与依赖版本过滤一致（完整语法见[版本、依赖与冲突](/developers/versions/#semver-过滤器表达式语法)）：
+键的写法与依赖版本过滤一致（完整语法见[版本、依赖与冲突](/zh/developers/versions/#semver-过滤器表达式语法)）：
 
 | 写法 | 示例 | 含义 |
 | ---- | ---- | ---- |
@@ -149,13 +149,13 @@ Copper 的 Mixin 配置**不是**原版 Mixin 的 `mixins.json` 格式。它在�
 ### 配置找到了但一个 Mixin 都没生效
 
 - 确认 `package` + 类名拼出的全限定名与实际类一致；
-- 确认版本过滤器匹配当前目标版本（用 `--mixin-log` 查看，见[入门教程 · 调试技巧](/developers/mixin/intro/#调试技巧)）；
+- 确认版本过滤器匹配当前目标版本（用 `--mixin-log` 查看，见[入门教程 · 调试技巧](/zh/developers/mixin/intro/#调试技巧)）；
 - 确认目标 id 正确（`mindustry` 或模组 id）。
 
 ### 报 `failed to find mixin config in copper assets of mod A`
 
 - 配置文件不存在于 Jar 的 `assets/copper/<配置路径>` 处；
-- 检查打包配置是否把 `res/` 打进了 Jar（见[快速开始](/developers/getting-started/#buildgradle)）。
+- 检查打包配置是否把 `res/` 打进了 Jar（见[快速开始](/zh/developers/getting-started/#buildgradle)）。
 
 ### 报 `mixin config version is not supported`
 

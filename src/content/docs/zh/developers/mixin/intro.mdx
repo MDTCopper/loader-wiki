@@ -8,7 +8,7 @@ import { Steps, Aside } from '@astrojs/starlight/components';
 本教程**假定你完全不了解 Mixin**，但已经会写 Mindustry Java 模组。我们会用 Mindustry 里的真实例子，一步步建立对 Mixin 的完整认识。
 
 <Aside type="note" title="本教程的定位">
-	本教程只覆盖**最常用**的注解。完整注解清单见[注解参考手册](/developers/mixin/reference/)；Mixin 官方 wiki（[SpongePowered Mixin Wiki](https://github.com/SpongePowered/Mixin/wiki)）的 Introduction 系列也值得一读，本文档是其 Mindustry 化的入门版本。
+	本教程只覆盖**最常用**的注解。完整注解清单见[注解参考手册](/zh/developers/mixin/reference/)；Mixin 官方 wiki（[SpongePowered Mixin Wiki](https://github.com/SpongePowered/Mixin/wiki)）的 Introduction 系列也值得一读，本文档是其 Mindustry 化的入门版本。
 </Aside>
 
 ## 第一个 Mixin
@@ -20,7 +20,7 @@ import { Steps, Aside } from '@astrojs/starlight/components';
 ### 准备
 
 <Steps>
-1. **声明 Mixin 目标。** 确保项目已配置好 Mixin 注解处理器（见[快速开始](/developers/getting-started/)），并在 `copper.mod.json` 中声明了 Mixin 目标：
+1. **声明 Mixin 目标。** 确保项目已配置好 Mixin 注解处理器（见[快速开始](/zh/developers/getting-started/)），并在 `copper.mod.json` 中声明了 Mixin 目标：
 
 	```json
 	{
@@ -204,7 +204,7 @@ public abstract class VarsPatch {
 
 - 影子字段/方法的**签名必须与目标一致**（名称、类型、参数）；
 - 影子方法写成 `abstract`（方法体无所谓，应用时会被替换）；
-- **影子字段以读取为主**：直接给影子字段赋值要谨慎——目标字段若是 `final`，必须加 `@Mutable` 才能写（见[注解参考手册](/developers/mixin/reference/#mutable)），而且目标类代码随时可能重置你写入的值；
+- **影子字段以读取为主**：直接给影子字段赋值要谨慎——目标字段若是 `final`，必须加 `@Mutable` 才能写（见[注解参考手册](/zh/developers/mixin/reference/#mutable)），而且目标类代码随时可能重置你写入的值；
 - 想给目标实例**附加自己的状态**时，别去改写目标字段，用 `@Unique` 声明自己的新字段更稳妥（见下）。
 
 ## 新增成员
@@ -228,7 +228,7 @@ public abstract class Patch {
 
 ## 新增不被覆写成员 @Unique
 
-`@Unique` 声明该成员**绝对不会覆写目标类的任何成员**——它只是 Mixin 自己的新成员。应用时这些成员仍会照常**合并进目标类**（其他 Mixin 也可用 `@Shadow` 引用）；但与目标类已有成员**重名**时，Mixin 不会去覆写目标实现，而是按可见性自动处理冲突（详见[注解参考手册](/developers/mixin/reference/#unique)）：
+`@Unique` 声明该成员**绝对不会覆写目标类的任何成员**——它只是 Mixin 自己的新成员。应用时这些成员仍会照常**合并进目标类**（其他 Mixin 也可用 `@Shadow` 引用）；但与目标类已有成员**重名**时，Mixin 不会去覆写目标实现，而是按可见性自动处理冲突（详见[注解参考手册](/zh/developers/mixin/reference/#unique)）：
 
 ```java
 @Mixin(SomeClass.class)
@@ -316,12 +316,12 @@ Mixin 的目标不限于游戏本体，也可以是**其他已安装的模组**�
 ```
 
 <Aside type="note" title="Mixin 目标 id">
-	目标 id 是其他模组的完整 id（原版模组为 `mindustry:<模组名>` 形式）。被注入模组的类在**它自己的容器**中解析（见[类隔离机制](/developers/class-visibility/)）。
+	目标 id 是其他模组的完整 id（原版模组为 `mindustry:<模组名>` 形式）。被注入模组的类在**它自己的容器**中解析（见[类隔离机制](/zh/developers/class-visibility/)）。
 </Aside>
 
 ## 针对版本的条件注入
 
-游戏不同版本内部实现可能不同。Mixin 配置支持**按目标版本选择**要应用的 Mixin 类（详见[配置 JSON 详解](/developers/mixin/config/)）：
+游戏不同版本内部实现可能不同。Mixin 配置支持**按目标版本选择**要应用的 Mixin 类（详见[配置 JSON 详解](/zh/developers/mixin/config/)）：
 
 ```json
 {
@@ -367,6 +367,6 @@ java -jar CopperLoader.jar -G mindustry.jar --mixin-flag example:examplemod,DEBU
 
 ## 下一步
 
-- 把 Mixin 配置与版本过滤玩明白：[配置 JSON 详解](/developers/mixin/config/)
-- 了解本项目 Mixin 与 Minecraft 版的差异（remap、裁剪等）：[与 Minecraft Mixin 的差异](/developers/mixin/copper-differences/)
-- 查看全部注解：[注解参考手册](/developers/mixin/reference/)
+- 把 Mixin 配置与版本过滤玩明白：[配置 JSON 详解](/zh/developers/mixin/config/)
+- 了解本项目 Mixin 与 Minecraft 版的差异（remap、裁剪等）：[与 Minecraft Mixin 的差异](/zh/developers/mixin/copper-differences/)
+- 查看全部注解：[注解参考手册](/zh/developers/mixin/reference/)

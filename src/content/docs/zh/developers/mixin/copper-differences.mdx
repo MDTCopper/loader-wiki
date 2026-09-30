@@ -64,7 +64,7 @@ Mixin 配置的 `target` 字段（`@env(...)` 目标选择器）在原版中无�
 .mixin.out/<容器id>/
 ```
 
-容器 id 示例：`mindustry`、`example-examplemod`。配合 `--mixin-flag <modId,DEBUG_EXPORT>` 使用（见[入门教程 · 调试技巧](/developers/mixin/intro/#调试技巧)）。
+容器 id 示例：`mindustry`、`example-examplemod`。配合 `--mixin-flag <modId,DEBUG_EXPORT>` 使用（见[入门教程 · 调试技巧](/zh/developers/mixin/intro/#调试技巧)）。
 
 ## 服务提供方式不同
 
@@ -76,7 +76,7 @@ Mixin 配置的 `target` 字段（`@env(...)` 目标选择器）在原版中无�
 
 **对模组作者的影响：**
 
-- 不要在 Jar 里放原版风格的 `mixins.json`（不会生效），一切以 `copper.mod.json` + `assets/copper/` 下的配置为准（见[配置 JSON 详解](/developers/mixin/config/)）；
+- 不要在 Jar 里放原版风格的 `mixins.json`（不会生效），一切以 `copper.mod.json` + `assets/copper/` 下的配置为准（见[配置 JSON 详解](/zh/developers/mixin/config/)）；
 - Mixin 引擎按容器独立初始化，不同模组的注入互不干扰；
 - 每个容器一个引擎实例，但共享全局单例的变换器——注入顺序由配置登记顺序决定。
 
@@ -104,7 +104,7 @@ annotationProcessor "com.github.MDTCopper:Mixin:$mixinVersion:processor"
 
 ## 实用建议
 
-1. **面向版本写注入**：游戏版本变化大（正式版/BE 版本号体系不同），尽量用[版本过滤](/developers/mixin/config/)拆分注入分支，而不是硬编码某个版本的行为；
+1. **面向版本写注入**：游戏版本变化大（正式版/BE 版本号体系不同），尽量用[版本过滤](/zh/developers/mixin/config/)拆分注入分支，而不是硬编码某个版本的行为；
 2. **少用 `@Overwrite`**：游戏更新频繁，`@Inject` 更抗版本变化；
 3. **别写 `remap`**：默认就是正确的；
-4. **调试靠日志与导出**：`--mixin-log`、`--mixin-flag ...DEBUG_EXPORT`（见[入门教程](/developers/mixin/intro/#调试技巧)）。
+4. **调试靠日志与导出**：`--mixin-log`、`--mixin-flag ...DEBUG_EXPORT`（见[入门教程](/zh/developers/mixin/intro/#调试技巧)）。

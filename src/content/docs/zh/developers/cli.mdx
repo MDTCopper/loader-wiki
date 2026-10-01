@@ -64,6 +64,8 @@ Launching game.
 | | `--vanilla` | 原版模式：只加载原版 Mindustry 模组、核心模组与 Copper 插件（见下文） |
 | | `--mixin-log <modId>` | 为指定模组启用 Mixin 审计日志 |
 | | `--mixin-flag <modId,flag1,...>` | 为指定模组添加 Mixin 环境标志 |
+| | `--mod-debug-jar <path>` | 要调试的模组**已安装**的 Jar 路径（见下文） |
+| | `--mod-debug-classpath <path>` | 该模组的编译输出（目录或 Jar），调试时用它取代 Jar 里的同名类 |
 
 <Aside type="note" title="三个容易踩的点">
 	**`-G` 可以重复指定**：多个条目会按顺序组成游戏容器的类路径，用于游戏本体被拆成多个 Jar、需要额外补丁 Jar，或直接拿**解压出来的目录**当类路径的场景。Jar 与目录都认：
@@ -101,9 +103,33 @@ Launching game.
 | 更详细的加载器日志 | `-d`（调试）或 `--verbose`（详细） |
 | 某个模组的 Mixin 注入过程 | `--mixin-log <modId>` |
 | 为某个模组加 Mixin 环境标志 | `--mixin-flag <modId,flag1,...>` |
+| 在 IDE 里调试某个模组（含热交换） | `--mod-debug-jar` + `--mod-debug-classpath`（见下文） |
 | 按报错找原因 | [启动报错](/zh/developers/startup-errors/) |
 
 启动日志写在数据目录下的 `last_log.txt`，出错时可以先看它。
+
+## 调试模组
+
+在 IDE 里调试模组时，把模组**已安装的 Jar** 与**编译输出**（目录或 Jar）一起交给加载器，游戏就用你刚编译出来的类：
+
+```bash
+java -jar CopperLoader.jar -G mindustry.jar \
+  --mod-debug-jar .mindustry/copper/mods/example-examplemod.jar \
+  --mod-debug-classpath build/classes/java/main
+```
+
+<Aside type="note" title="两个参数必须同时给">
+	只给其中一个会打印 `ignoring mod debug request` 告警并**忽略整个请求**，游戏照常按 Jar 里的类启动。
+	`--mod-debug-jar` 必须是加载器**实际加载的那一份**的路径（模组文件夹里的那个文件）；路径对不上时同样只告警，不会用调试类路径。
+</Aside>
+
+它能做这些：
+
+- **改代码立即生效**：重新编译后，游戏里跑的就是新代码——已经在运行的类可以**热交换**（不重启游戏就换掉已经加载的类），下一次调用就走新代码；改 Mixin 也一样，注入会重新应用到目标类。热交换只能改**方法体**，增删字段、增删方法、改继承关系要重启游戏；
+- **只替换你调试的这个模组**：其他模组与游戏本体不会用你的编译输出；你 Mixin 到它们身上的部分照常注入，也会一起更新；
+- **改元数据要重新打包**：`copper.mod.json`（id、Mixin 配置路径、依赖等）读的仍是 Jar 里的那份。
+
+热交换由加载器自己准备，不用你加 `-javaagent`，也不用改启动方式。这是桌面端命令行能力，Android 端不使用。
 
 ## Android 端
 

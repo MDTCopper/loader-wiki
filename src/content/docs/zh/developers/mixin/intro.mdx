@@ -356,6 +356,18 @@ java -jar CopperLoader.jar -G mindustry.jar --mixin-flag example:examplemod,DEBU
 - `DEBUG_EXPORT` 会把注入后的类写到工作目录的 `.mixin.out/<容器id>/` 下（可用反编译工具查看）；
 - 其他可用标志见 `org.spongepowered.asm.mixin.MixinEnvironment.Option`。
 
+### 在 IDE 里调试
+
+调试模组时，用 `--mod-debug-jar` 与 `--mod-debug-classpath` 指向已安装的 Jar 与编译输出，就能不重启游戏看到改动效果（热交换）：
+
+```bash
+java -jar CopperLoader.jar -G mindustry.jar \
+  --mod-debug-jar .mindustry/copper/mods/example-examplemod.jar \
+  --mod-debug-classpath build/classes/java/main
+```
+
+改完重新编译，改动就会生效。什么是热交换、有哪些限制，见[加载器命令行 · 调试模组](/zh/developers/cli/#调试模组)。
+
 ### 常见报错
 
 | 报错 | 含义 | 处理 |

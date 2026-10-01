@@ -20,12 +20,15 @@ Copper 使用的 Mixin 是 **SpongePowered Mixin 0.8.7 的修改版**（仓库�
 | Mojang 服务（`service.mojang.*`） | 旧版 Minecraft 启动器（LaunchWrapper）集成 | 无。Mindustry 不使用 LaunchWrapper |
 | ModLauncher 服务（`service.modlauncher.*`） | Fabric/Forge 的类加载服务集成 | 无 |
 | Forge/FML 平台代理 | Forge 专用平台 | 无 |
-| MixinAgent（`tools.agent.*`） | Java agent（`-javaagent`）运行时注入 | **不支持 javaagent 方式注入**。Copper 通过自己的容器类加载管线完成变换 |
 | RuntimeDecompiler（Fernflower） | 导出时反编译 | 无（导出仍可用，见下文） |
 | 混淆相关（`tools.obfuscation.*` 的 JSON/Mapping） | 官方混淆映射 | **Mindustry 不混淆，无需映射** |
 | `module-info` 等 | Java 模块化 | 无 |
 
 **结论：** 面向 Minecraft 的配置项（`refmap`、混淆映射、`MixinPlatformAgent` 等）在 Copper 中不存在或无效，不要使用。
+
+<Aside type="note" title="MixinAgent 被保留">
+	修改版保留了原版的 **MixinAgent（`tools.agent.*`）**，它服务于[调试模组](/zh/developers/cli/#调试模组)的类重定义与热交换：加载器 Jar 通过清单里的 `Launcher-Agent-Class` **自己**启动 agent，并把它交给 Mixin 的变换器，你不需要（也不应该）自己加 `-javaagent`。模组的正常加载与注入仍然走容器的类加载管线，与 agent 无关。
+</Aside>
 
 ## 默认值调整
 
@@ -100,11 +103,11 @@ annotationProcessor "com.github.MDTCopper:Mixin:$mixinVersion:processor"
 | `target` | 需显式设置 | 默认 `@env(DEFAULT)` |
 | 混淆映射 | 需要 `refmap` | 不需要 |
 | 加载方式 | 扫描 classpath | 容器 + 内存 `copper://` |
-| Java agent | 可用 | **不可用**（由容器管线代替） |
+| Java agent | 需要 `-javaagent` | 由加载器自行启动（`Launcher-Agent-Class`），不用自己配置；仅用于[调试模组](/zh/developers/cli/#调试模组) |
 
 ## 实用建议
 
 1. **面向版本写注入**：游戏版本变化大（正式版/BE 版本号体系不同），尽量用[版本过滤](/zh/developers/mixin/config/)拆分注入分支，而不是硬编码某个版本的行为；
 2. **少用 `@Overwrite`**：游戏更新频繁，`@Inject` 更抗版本变化；
 3. **别写 `remap`**：默认就是正确的；
-4. **调试靠日志与导出**：`--mixin-log`、`--mixin-flag ...DEBUG_EXPORT`（见[入门教程](/zh/developers/mixin/intro/#调试技巧)）。
+4. **调试靠日志、导出与类路径**：`--mixin-log`、`--mixin-flag ...DEBUG_EXPORT`（见[入门教程](/zh/developers/mixin/intro/#调试技巧)），以及[调试模组](/zh/developers/cli/#调试模组)（`--mod-debug-jar` + `--mod-debug-classpath`）。

@@ -1,22 +1,38 @@
 ---
 title: 快速开始
-description: 搭建 Copper 模组项目并构建出第一个模组。
+description: 用官方模板搭起 Copper 模组项目，构建、安装并在 IDEA 里调试。
 ---
 
 import { Steps, Aside, FileTree } from '@astrojs/starlight/components';
 
-本页介绍如何从零搭建一个 Copper 模组项目。最好的起点是项目仓库中的 [mod-templete](https://github.com/MDTCopper/loader)（Copper 官方模组模板）。
+本页从官方模板 [mod-templete](https://github.com/MDTCopper/mod-templete) 起步：把模板改成你自己的模组，构建出 Jar，最后在 IDEA 里直接断点调试。**不用从零手写工程**——构建脚本、示例主类与 Mixin、调试用的运行配置，模板里都配好了。
+
+## 获取模板
+
+<Steps>
+1. **拿一份模板。** 在仓库页面点 **Code → Download ZIP**，或者直接克隆：
+
+	```bash
+	git clone https://github.com/MDTCopper/mod-templete.git my-mod
+	```
+
+2. **用 IDEA 打开**项目根目录，按提示以 **Gradle 项目**导入。模板自带 Gradle wrapper（`gradlew`、`gradlew.bat` 与 `gradle/wrapper/`），本机不装 Gradle 也能构建。
+
+3. **改掉示例的身份**，让加载器把它当成你的模组：见[从示例改起](#从示例改起)。
+</Steps>
 
 ## 项目结构
 
-一个最小的 Copper 模组项目长这样：
+克隆下来的模板长这样：
 
 <FileTree>
 - my-mod/
-	- build.gradle
-	- settings.gradle
+	- build.gradle — 依赖与构建、调试任务
+	- settings.gradle — 根项目名，决定产物 Jar 的文件名
 	- copper.mod.json — 模组元数据（必填；HJSON 写法为 copper.mod.hjson）
 	- icon.png — 模组图标（可选）
+	- gradlew / gradlew.bat — Gradle wrapper
+	- .run/ — IDEA 运行配置：BuildJar、PrepareDebug、Debug
 	- res/
 		- assets/  — 原版资源：游戏按原版规则加载
 			- bundles/
@@ -25,11 +41,10 @@ import { Steps, Aside, FileTree } from '@astrojs/starlight/components';
 				- mixins/
 					- mindustry.json — Mixin 配置（可选，见 Mixin 专题）
 	- src/
-		- 你的包名/
-			- MyMod.java — 主类，继承 CopperMod
-			- patch/
-				- impl/
-					- MyPatch.java — Mixin 类（可选）
+		- example/examplemod/
+			- ExampleMod.java — 主类，继承 CopperMod
+			- patch/impl/
+				- MyPatch.java — Mixin 类（可选）
 </FileTree>
 
 `icon.png` 是**可选**的：没有它模组照常加载，只是不会显示模组图标。
@@ -40,85 +55,84 @@ import { Steps, Aside, FileTree } from '@astrojs/starlight/components';
 - 主类需要继承 **`CopperMod`**（见[主类与生命周期](/zh/developers/main-class/)）；
 - 资源布局上，`assets/` 会被挂载为原版 `LoadedMod` 的资源根，因此原版模组资源（`bundles/`、`sprites/`、`content/` 等）放在 `assets/` 下，而 Copper 自己的资源（Mixin 配置等）放在 `assets/copper/` 下，两者互不干扰（详见[数据、设置与本地化 · 资源文件](/zh/developers/data/#资源文件)）。
 
-## build.gradle
+## 从示例改起
 
-参考模板项目的构建配置：
+模板里的一切都是示例，挨个换成自己的就行：
 
-```groovy
-apply plugin: 'java-library'
+| 改哪里 | 说明 |
+| ------ | ---- |
+| `settings.gradle` 的 `rootProject.name` | 只影响产物文件名，改成模组名即可 |
+| `copper.mod.json` 的 `id` / `name` / `author` / `version` / `main` | `id` 是模组标识，形如 `作者:模组名`；`main` 是主类的全限定名（见[模组元数据](/zh/developers/mod-meta/)） |
+| `src/` 下的目录与类名 | 目录结构就是包名，改完记得同步 `copper.mod.json` 的 `main` |
+| `res/assets/copper/mixins/mindustry.json` 的 `package` | Mixin 类所在的包，必须与源码一致（见[配置 JSON 详解](/zh/developers/mixin/config/)） |
 
-sourceSets {
-    main {
-        java.srcDirs = ["src"]
-        resources.srcDirs = ["res"]
-    }
-}
-
-repositories {
-    mavenLocal()
-    mavenCentral()
-    maven { url = 'https://www.jitpack.io' }
-}
-
-ext {
-    copperVersion = 'snapshot'
-    // 从 https://github.com/MDTCopper/loader/blob/<copperVersion>/gradle.properties 获取
-    mixinVersion = '0.1.4'
-    gameVersion = 'v159.7'
-}
-
-dependencies {
-    compileOnly "com.github.MDTCopper.loader:core:$copperVersion"   // 加载器核心 API
-    compileOnly "com.github.MDTCopper.loader:mod:$copperVersion"     // CopperMod 等模组侧 API
-    compileOnly "com.github.Anuken.Mindustry:core:$gameVersion"
-    annotationProcessor "com.github.MDTCopper:Mixin:$mixinVersion:processor"
-}
-
-jar {
-    dependsOn configurations.runtimeClasspath
-    from ({
-        configurations.runtimeClasspath.collect {
-            it.isDirectory() ? it : zipTree(it)
-        }
-    }) {
-        include '*'
-    }
-    from (projectDir) {
-        include 'copper.mod.json', 'copper.mod.hjson'
-        include 'icon.png'
-    }
-    duplicatesStrategy = DuplicatesStrategy.WARN
-}
-```
-
-要点：
-
-- 通过 **jitpack** 依赖 `loader:core`（加载器核心，含 `copper.loader.*`）与 `loader:mod`（模组侧 API，含 `copper.core.mod.CopperMod`）；
-- `annotationProcessor` 需要 **Mixin 注解处理器**（`com.github.MDTCopper:Mixin:<mixinVersion>:processor`），用于编译期检查 Mixin 注解的正确性；
-- `compileOnly` 意味着这些依赖不会被打进 Jar——Copper 模组在运行时由加载器提供这些类；
-- Jar 打包时把 `copper.mod.json`（或 `copper.mod.hjson`）与 `icon.png` 放到 Jar 根目录。
-
-<Aside type="note" title="版本同步">
-	`copperVersion` 与 `mixinVersion` 需要匹配。mixin 版本号写在对应加载器版本仓库的 `gradle.properties` 里（`mixinVersion=...`）。
-</Aside>
-
-## 最小的主类
-
-一个最小的主类只需要继承 `CopperMod`，甚至可以不覆写任何方法：
+模板的主类就是一个能跑的最小模组：
 
 ```java
 package example.examplemod;
 
-import copper.core.mod.CopperMod;
+import copper.core.mod.*;
 
 public class ExampleMod extends CopperMod {
-    // 构造器在主类实例化时调用
     public ExampleMod() {
+    }
+
+    @Override
+    public void registerPackets() {
+        // 需要自定义网络数据包时在这里注册
     }
 }
 ```
 
-`registerPackets()` 等扩展方法都是可选的，需要时才覆写（见[主类与生命周期](/zh/developers/main-class/)）。
+`registerPackets()` 之类的扩展方法都是可选的，用不到就删掉（见[主类与生命周期](/zh/developers/main-class/)）。`MyPatch` 是往 `Vars::finishLaunch` 注入一行日志的示例 Mixin：删掉它的同时，要一并删掉 `copper.mod.json` 里的 `mixins` 和 `res/assets/copper/mixins/`。
+
+## 构建配置
+
+`build.gradle` 通常只需要改版本号：
+
+```groovy
+ext {
+    // 发行 tag 或 commit hash；不要写 snapshot
+    copperVersion = '<加载器版本>'
+    // 从这个版本的 gradle.properties 里取
+    mixinVersion = '<Mixin 版本>'
+    gameVersion = 'v159.7'
+}
+```
+
+- **`copperVersion`** 填加载器的发行 tag（例如 `0.2.0`）或某个 commit hash。别写 `snapshot`——那是给 GitHub Release 用的通道名，也别写 `-SNAPSHOT`，jitpack 每次拉取都会重新构建，卡很久；
+- **`mixinVersion`** 必须与 `copperVersion` 配套：去 `https://github.com/MDTCopper/loader/blob/<copperVersion>/gradle.properties` 上看同一份声明（`mixinVersion=...`）；
+- **`gameVersion`** 决定编译时用的游戏 API，也决定调试时下载哪个游戏版本。
+
+依赖部分模板已经写好，一般不用动：
+
+```groovy
+dependencies {
+    compileOnly "com.github.MDTCopper.loader:core:$copperVersion"    // 加载器核心 API
+    compileOnly "com.github.MDTCopper.loader:mod:$copperVersion"     // CopperMod 等模组侧 API
+    compileOnly "com.github.Anuken.Mindustry:core:$gameVersion"
+    annotationProcessor "com.github.MDTCopper:Mixin:$mixinVersion:processor"
+    loaderDesktop "com.github.MDTCopper.loader:desktop:$copperVersion"   // 仅调试用
+}
+```
+
+- `loader:core`（含 `copper.loader.*`）与 `loader:mod`（含 `copper.core.mod.CopperMod`）通过 **jitpack** 拉取；
+- `annotationProcessor` 是 **Mixin 注解处理器**，用来在编译期检查 Mixin 注解的正确性；
+- `compileOnly` 的依赖**不会**被打进 Jar——这些类运行时由加载器提供；`loaderDesktop` 只在调试任务里用到，同样不进 Jar；
+- `jar` 任务会把 `copper.mod.json`（或 `copper.mod.hjson`）与 `icon.png` 放到 Jar 根目录。
+
+模板还注册了四个调试用的任务，`Debug` 运行配置会按顺序调用它们：
+
+| 任务 | 作用 |
+| ---- | ---- |
+| `downloadLoader` | 把 `loader:desktop` 存成项目根目录下的 `loader.jar` |
+| `downloadMindustry` | 从 GitHub Release 下载 `gameVersion` 的游戏 Jar，存成 `game.jar` |
+| `prepareDebugJar` | 构建模组，并复制成 `.mindustry/copper/mods/mod-to-debug.jar` |
+| `prepareDebug` | 依次执行上面三个 |
+
+<Aside type="note" title="两个下载任务只看文件在不在">
+	`downloadLoader` 与 `downloadMindustry` 只在 `loader.jar` / `game.jar` **不存在**时才下载。改了 `copperVersion` 或 `gameVersion` 之后，要先删掉这两个文件再调试，否则用的还是旧的那份。
+</Aside>
 
 ## 构建与安装
 
@@ -126,19 +140,73 @@ public class ExampleMod extends CopperMod {
 1. **构建 Jar。** 在项目根目录执行：
 
 	```bash
-	gradle jar
+	./gradlew jar
 	```
 
-	产物是 `build/libs/my-mod-<version>.jar`。
+	Windows 用 `gradlew.bat jar`；在 IDEA 里跑 **BuildJar** 配置也一样。产物是 `build/libs/<根项目名>.jar`。
 
-2. **放入模组文件夹。** 把 Jar 复制到 `<数据目录>/copper/mods/`（见[使用桌面版 · 模组放在哪里](/zh/players/desktop/#模组放在哪里)）。
+2. **放入模组文件夹。** 把 Jar 复制到 `<数据目录>/copper/mods/`（见[使用桌面版 · 模组放在哪里](/zh/players/desktop/#模组放在哪里)）。文件名随便取，加载器按 Jar 里的元数据认模组，与文件名无关。
 
-3. **启动验证。** 启动游戏，日志中应出现：
+3. **启动验证。** 启动游戏，日志里会列出加载到的模组。只放了一个模组时是：
 
 	```
 	Found 2 mods.
 	```
+
+	除了你的模组，另一个是加载器的核心模组。数量比预期少，通常是文件没放进上面那个文件夹。
 </Steps>
+
+## 调试
+
+模板的 `.run/` 里带了三份 IDEA 运行配置，以 Gradle 项目导入后**开箱即用**，不用自己拼命令行：
+
+| 配置 | 做什么 |
+| ---- | ------ |
+| BuildJar | 跑 `jar` 任务，产出可安装的 Jar |
+| PrepareDebug | 跑 `prepareDebug`，准备好 `loader.jar`、`game.jar` 与待调试的模组 Jar |
+| Debug | 用 `loader.jar` 启动游戏并接上调试器，启动前自动执行 PrepareDebug |
+
+<Steps>
+1. **打断点。** 在 `src/` 里的模组代码上点一下断点。
+2. **以 Debug 方式运行 Debug 配置。** 第一次会先下载加载器与游戏 Jar，需要联网；下完自动启动游戏，命中断点后就能看调用栈、变量、单步执行。
+3. **改完再编译。** 改动后按 `Ctrl+F9` 重新编译，IDEA 提示 **Reload changed classes** 时确认，游戏里跑的立刻就是新代码——不用重启游戏，也不用重新打包。
+</Steps>
+
+`Debug` 配置实际执行的命令大致是：
+
+```bash
+java --enable-native-access=ALL-UNNAMED -jar loader.jar -G game.jar \
+  --mod-debug-jar .mindustry/copper/mods/mod-to-debug.jar \
+  --mod-debug-classpath build/classes/java/main
+```
+
+几个要点：
+
+- **用的是项目自己的数据目录。** 配置的工作目录是项目根目录，加载器默认把当前目录下的 `.mindustry` 当数据目录，所以调试不会碰你平时玩的存档与模组（该目录已在 `.gitignore` 里）。想改用真实数据目录，就在 Program arguments 里加 `-D <路径>`；
+- **编译输出优先于 Jar。** `--mod-debug-classpath` 指向 Gradle 的编译输出 `build/classes/java/main`，它排在 Jar 里的同名类之前，所以代码改完必须**重新编译**才生效；`copper.mod.json` 这类元数据读的仍是被调试的那份 Jar，改了要重跑 `prepareDebug`；
+- **热交换默认只能改方法体。** 改方法体、改 Mixin 的注入逻辑可以热交换；增删字段或方法、改继承关系要重启游戏——这是运行用的 JDK 的限制，换掉它就能放宽，见[增强热交换](#增强热交换)。原理见[加载器命令行 · 调试模组](/zh/developers/cli/#调试模组)；
+- **JDK 版本。** `Debug` 配置把运行 JRE 指定成了 **25**，本机没有它就换成自己的 JDK。Copper 的 Mixin 引擎要求 17+（见[加载器命令行 · 准备](/zh/developers/cli/#准备)），而 **Mindustry v9 起要求 Java 25**——游戏版本到了 v9，只有 JDK 25 或更高才跑得起来；
+- **看 Mixin 的注入过程。** 在 Program arguments 末尾加上 `--mixin-log 你的模组id`，启动日志会打印每个 Mixin 的应用情况（见[Mixin 入门教程 · 调试技巧](/zh/developers/mixin/intro/#调试技巧)）。
+
+不想用 IDEA 的话，上面那条命令就是等价做法，各参数的含义见[加载器命令行](/zh/developers/cli/)。
+
+### 增强热交换
+
+上面那些限制来自**普通的 JDK**。换成 [JetBrains Runtime](https://github.com/JetBrains/JetBrainsRuntime)（JBR）就能改得更多：JBR 内置了 [DCEVM](https://ssw.jku.at/dcevm/) 的增强类重定义，加载新类时允许**增删方法、增删字段、改方法签名、增删内部类**，同样不用重启游戏。这个能力在 JBR 里默认关闭，要用 `-XX:+AllowEnhancedClassRedefinition` 打开。
+
+用 IDEA 自带的 JBR 最省事：
+
+<Steps>
+1. **让运行配置用 JBR。** 在 Project Structure → SDKs 里添加一个 JDK：新版 IDEA 的 **Download JDK** 列表里直接有 JetBrains Runtime，也可以指向 IDEA 安装目录下的 `jbr`。加好后把 `Debug` 运行配置的 JRE 换成它。
+
+2. **打开增强重定义。** 在 `Debug` 运行配置的 VM options 里，把 `-XX:+AllowEnhancedClassRedefinition` 追加到原有的 `--enable-native-access=ALL-UNNAMED` 后面。
+
+3. **照旧重新编译。** 按 `Ctrl+F9` 并确认 **Reload changed classes**，这次增删的方法与字段也会一起生效。
+</Steps>
+
+<Aside type="note" title="配置类的东西仍要重启">
+	增强重定义管的是类的结构，不管配置：`copper.mod.json` 读的仍是 Jar 里的那份，改了要重跑 `prepareDebug`；`res/` 下的 Mixin 配置不在调试类路径里，改了同样要重跑 `prepareDebug` 并重启游戏。
+</Aside>
 
 ## 下一步
 

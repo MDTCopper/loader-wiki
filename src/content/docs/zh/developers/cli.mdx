@@ -11,7 +11,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 1. **游戏 Jar**：官方发布的**桌面版** Jar，例如从 [Mindustry 官方仓库 Release](https://github.com/Anuken/Mindustry/releases) 下载的 `Mindustry-Desktop-xxx.jar`，或 [MindustryBuilds](https://github.com/Anuken/MindustryBuilds/releases) 的 BE 构建。
 2. **加载器 Jar**：从 [MDTCopper/loader 的 Release](https://github.com/MDTCopper/loader/releases) 下载桌面端产物——带版本号的**发行版** `desktop-<版本>.jar`（固定不动，例如 `desktop-0.2.0.jar`），或者每次 push 都会重建的**快照** `desktop-snapshot.jar`（两者区别见下文）。`android-<版本>.jar` / `android-snapshot.jar` 是 Android 端用的构建器产物，桌面端不需要。本文后续示例统一把桌面产物写作 `CopperLoader.jar`。
-3. **Java 17 或更高版本**：Copper 的 Mixin 引擎要求 Java 17+。用更低的版本启动会直接失败并抛出 `UnsupportedClassVersionError`（见[启动报错 · Java 版本问题](/zh/developers/startup-errors/#java-版本问题)）。
+3. **Java 17 或更高版本**：Copper 的 Mixin 引擎要求 Java 17+。用更低的版本启动会直接失败并抛出 `UnsupportedClassVersionError`（见[启动报错 · Java 版本问题](/zh/developers/startup-errors/#java-版本问题)）。游戏本身的要求更高：**Mindustry v9 起要求 Java 25**，游戏 Jar 换成 v9 之后，请把这里的 `java` 也换成 JDK 25 或更高，否则同样会因为版本过低而启动失败。
 
 ## 启动
 
@@ -125,11 +125,13 @@ java -jar CopperLoader.jar -G mindustry.jar \
 
 它能做这些：
 
-- **改代码立即生效**：重新编译后，游戏里跑的就是新代码——已经在运行的类可以**热交换**（不重启游戏就换掉已经加载的类），下一次调用就走新代码；改 Mixin 也一样，注入会重新应用到目标类。热交换只能改**方法体**，增删字段、增删方法、改继承关系要重启游戏；
+- **改代码立即生效**：重新编译后，游戏里跑的就是新代码——已经在运行的类可以**热交换**（不重启游戏就换掉已经加载的类），下一次调用就走新代码；改 Mixin 也一样，注入会重新应用到目标类。普通 JDK 下热交换只能改**方法体**，增删字段、增删方法、改继承关系要重启游戏；换成 [JetBrains Runtime](https://github.com/JetBrains/JetBrainsRuntime) 并加上 `-XX:+AllowEnhancedClassRedefinition` 后这个限制会放宽，见[快速开始 · 增强热交换](/zh/developers/getting-started/#增强热交换)；
 - **只替换你调试的这个模组**：其他模组与游戏本体不会用你的编译输出；你 Mixin 到它们身上的部分照常注入，也会一起更新；
 - **改元数据要重新打包**：`copper.mod.json`（id、Mixin 配置路径、依赖等）读的仍是 Jar 里的那份。
 
 热交换由加载器自己准备，不用你加 `-javaagent`，也不用改启动方式。这是桌面端命令行能力，Android 端不使用。
+
+用官方模板 [mod-templete](https://github.com/MDTCopper/mod-templete) 起项目时，这条命令已经写好并包在 `Debug` 运行配置里，不需要自己敲，见[快速开始 · 调试](/zh/developers/getting-started/#调试)。
 
 ## Android 端
 

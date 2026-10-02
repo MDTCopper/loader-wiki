@@ -25,6 +25,8 @@ java.lang.UnsupportedClassVersionError: ... has been compiled by a more recent v
 java -version   # 确认版本号 >= 17
 ```
 
+17 是 Copper 的 Mixin 引擎的下限，游戏本身的要求会更高：**Mindustry v9 起要求 Java 25**。换成 v9 的游戏 Jar 之后，这里的下限也跟着变成 25，用更低的版本启动同样会抛出这个错误。
+
 ### `Unable to load library` / 找不到 Java
 
 **原因**：Java 未安装或未加入 `PATH`。

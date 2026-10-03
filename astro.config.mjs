@@ -88,6 +88,7 @@ export default defineConfig({
 								{ label: 'android-bridge 平台', slug: 'developers/android-bridge' },
 							],
 						},
+						{ label: '收录到模组浏览器', slug: 'developers/browser-listing' },
 					],
 				},
 				{

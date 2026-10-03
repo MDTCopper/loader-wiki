@@ -1,0 +1,147 @@
+---
+title: 收录到模组浏览器
+description: 让模组出现在启动器的模组浏览器里：收录标准、发布规范与发版前的自检清单。
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Copper 启动器里的**模组浏览器**并不自己维护一份模组清单：其中 Copper 模组的列表来自 [copper-mods](https://github.com/MDTCopper/copper-mods) 每天自动生成的索引 `mods.json`。索引把 GitHub 上符合收录标准的仓库汇总成条目，**不需要提 PR**——仓库满足条件，下一次扫描就会自动出现。
+
+<Aside type="note" title="索引里没有下载链接">
+	条目只有元数据，没有 tag、没有附件名、也没有下载地址。启动器拿到条目后，自己去问 GitHub 的 `/repos/<repo>/releases`，再从选中的 release 里取构建。所以[发布规范](#发布规范)里的约定不会被收录环节检查——它们决定的是玩家在浏览器里**能不能真的装上**你的模组。
+</Aside>
+
+## 收录标准
+
+扫描每天跑一次，逐个仓库检查下面几条：
+
+| 条件 | 说明 |
+| ---- | ---- |
+| 元数据在仓库根目录 | 根目录必须有 `copper.mod.json` 或 `copper.mod.hjson`，**不能**放在 `assets/` 下。这正是加载器查找的位置，布局不对的模组 Copper 本来也装不上 |
+| 仓库带指定 topic | 仓库需要添加 `mindustry-copper-mod` topic，扫描按它发现模组 |
+| 公开且未归档 | 私有仓库与已归档仓库都会被跳过 |
+| 不是模板仓库 | GitHub 的 `is_template` 标记，以及一份已知模板与示例仓库（`MDTCopper/mod-template`、`Anuken/ExampleMod` 之类）的排除表都会跳过。模板往往和真实模组用同一个 `id`，收录它会占掉真实模组的位置 |
+| 元数据合法 | 元数据交给**加载器自己的解析器**解析：加载器启动时会拒绝的，这里同样跳过，并记进扫描日志 |
+
+### 图标
+
+图标从仓库的**默认分支**读：先找根目录的 `icon.png`，没有就找 `assets/icon.png`。两处都没有也能收录，只是浏览器里没有图标。图标**不会**从 release 附件里取。
+
+### 退出收录
+
+想不进浏览器、又不改变加载器的行为，就在元数据的 `extra` 对象里写 `browser: false`。加载器与游戏都会忽略 `extra` 里不认识的字段，所以这对它们完全不可见：
+
+```json
+"extra": { "browser": false }
+```
+
+## 发布规范
+
+### 可下载版本的 tag
+
+模组浏览器只把两种形式的 tag 当成**可下载的版本**：与 `copper.mod.json` 里的 `version` 完全相同的，以及它后面加 `-beta` 的测试版。**去掉 `-beta` 之后，tag 必须与 `version` 严格相等**：
+
+| `version` | tag | 版本列表里 |
+| --------- | --- | ---------- |
+| `1.2.3` | `1.2.3` | 列出，正式版 |
+| `1.2.3` | `1.2.3-beta` | 列出，测试版 |
+| `1.2.3` | `v1.2.3` | 不列出 |
+| `1.2.3` | `1.2.3-beta2` | 不列出，`-beta` 之后不能再带东西 |
+| `1.2.3` | `1.2.4-beta` | 列出，版本不匹配下载失败 |
+
+索引发布的 `version` 取自仓库默认分支上的元数据，浏览器要让 release 的 tag 与它对应上，才能把版本列表和索引里的版本对起来、判断玩家手里的构建是不是旧的。测试标记只写在 tag 上，`version` 始终是 `1.2.3` 这样的纯 SemVer。
+
+### 同一个版本只发一次
+
+对同一个 `version`，测试版与正式版**不能并存**：发了 `1.2.3-beta`，就不能再发 `1.2.3`。测试结束之后要**抬升版本号**，用新版本发布正式版——测试版 `1.2.3-beta` 之后发的是 `1.2.4`，而不是补一个 `1.2.3`。
+
+<Aside type="caution" title="复用同一个版本号会让更新判断失效">
+	启动器既靠「tag 去掉 `-beta` 后等于 `version`」把 release 与版本对上号，也靠版本号判断玩家手里的构建是不是旧的。同一个版本号下存在两个 release，哪个才是该装的就没有判据，玩家也收不到更新提示。
+</Aside>
+
+### 发行版附件的命名
+
+每个可下载 tag 的 release 至少带一个 `.jar` 附件，且名字必须是下面两种之一。`<仓库名>` 指仓库路径的最后一段（`example/examplemod` 即 `examplemod`）：
+
+```
+<仓库名>.jar
+<仓库名>-<版本>.jar
+```
+
+`<版本>` 取元数据里的 `version`：测试版的 `-beta` 只出现在 tag 上，附件名与正式版一致。以仓库 `example/examplemod`、版本 `1.2.3` 为例：
+
+| 附件名 | 可用 | 说明 |
+| ------ | ---- | ---- |
+| `examplemod.jar` | 是 | 不带版本号的形式 |
+| `examplemod-1.2.3.jar` | 是 | 带版本号的形式 |
+| `app.jar`、`模组.jar` | 否 | 名字与仓库对不上 |
+| `examplemod-1.2.3-SNAPSHOT.jar` | 否 | 版本与元数据里的 `1.2.3` 不同 |
+| `examplemod-sources.jar` | 否 | 源码包，不是能载入的模组本体 |
+
+<Aside type="note" title="文件名不影响加载，但影响能不能被找到">
+	加载器按 Jar 里的元数据认模组，与文件名无关（见[快速开始 · 构建与安装](/zh/developers/getting-started/#构建与安装)）。但在 release 里，浏览器是从一堆附件中挑出模组本体的，固定的命名就是它唯一的判据——尤其当同一个 release 还挂了源码包、文档包的时候。
+</Aside>
+
+<Aside type="caution" title="只打 tag 不算发布">
+	只有 tag、没有带 `.jar` 附件的 release，浏览器取不到编译产物。发版要真的执行 `./gradlew jar`，再把 `build/libs/` 里的那个 Jar 作为 release 附件上传。
+</Aside>
+
+### 声明游戏版本范围
+
+在元数据的 `dependencies` 里写清 `mindustry`（需要时再写 `loader`）的支持范围。这条过滤条件会**原样**发布成索引里的 `gameRequirement`，启动器在下载任何东西之前就用它判断构建能不能跑在玩家选的游戏版本上；不写表示接受任意版本：
+
+```json
+"dependencies": { "mindustry": ">=159", "loader": ">=0.2.0" }
+```
+
+表达式语法见[版本、依赖与冲突 · 版本过滤条件写法](/zh/developers/versions/#版本过滤条件写法)。
+
+### 改动之后升版本号
+
+启动器比对的是**版本号**：改了代码、重新发布，却没升 `version`，玩家那边看不出有更新。索引里的 `lastUpdated` 只是仓库最后一次推送的时间，它不参与更新判断。测试版转正式版同理——抬升版本号再发，不能拿同一个版本号补发正式版，见[同一个版本只发一次](#同一个版本只发一次)。
+
+## 发版前自检
+
+<Steps>
+1. **让加载器检查元数据。** copper-mods 仓库自带的 `validate` 命令用加载器的解析器跑一遍：
+
+	```bash
+	./gradlew validate -Ptarget=<模组目录或 Jar>
+	```
+
+	打印 `ok: the loader accepts this metadata.` 就是通过；退出码 `3` 表示加载器会拒绝这个模组，需要先修好再发布。
+
+2. **逐项核对清单。**
+
+	| 检查项 | 期望 |
+	| ------ | ---- |
+	| 元数据文件 | 仓库根目录有 `copper.mod.json` 或 `copper.mod.hjson` |
+	| topic | 仓库已添加 `mindustry-copper-mod` |
+	| 可见性 | 公开、未归档 |
+	| 模板 | 不是模板仓库，也不在排除表里 |
+	| `version` | 合法的 SemVer；tag 是它本身或它加 `-beta`，这样才会进版本列表；同一个版本号下只有一个 release |
+	| 附件 | release 里有 `<仓库名>.jar` 或 `<仓库名>-<版本>.jar` |
+	| 版本范围 | `dependencies.mindustry` 写清了支持范围 |
+
+3. **推上去，等下一次扫描。** 索引每天刷新一次，收录不需要额外申请。
+</Steps>
+
+## 没有被收录时
+
+| 现象 | 常见原因 |
+| ---- | -------- |
+| 完全搜不到 | 仓库没加 `mindustry-copper-mod` topic；元数据不在仓库根目录；`extra.browser` 写成了 `false`；仓库已归档，或被当成模板跳过 |
+| 扫描日志里被跳过 | 元数据不合法，加载器会拒绝——本地跑一次 `validate` 看具体报错 |
+| 列出来了却下载不了 | release 里没有 `.jar` 附件，或附件名不符合[命名规范](#发行版附件的命名)；只打了 tag、没发构建也算这种 |
+| 某个 release 不在版本列表里 | tag 不是 `<版本>` 或 `<版本>-beta` 的形式，浏览器不把它当成可下载的版本 |
+| 下载了却装不上 | release 的 tag 与元数据 `version` 对不上（去掉 `-beta` 后仍须严格相等）；或 `dependencies.mindustry` 的范围把玩家当前的游戏版本排除了 |
+| 发了新版但玩家看不到更新 | 没有升 `version`，或用同一个 tag 覆盖了旧 release |
+| 玩家装了测试版却等不到正式版 | 正式版复用了测试版的版本号；测试结束要抬升版本号，用新版本发正式版 |
+
+扫描日志会写明每个仓库被跳过的原因，逐项排查的做法见 [copper-mods 的说明](https://github.com/MDTCopper/copper-mods/blob/main/README.zh_CN.md)。
+
+## 下一步
+
+- 完整字段与语法：[模组元数据](/zh/developers/mod-meta/)
+- 版本与依赖表达式：[版本、依赖与冲突](/zh/developers/versions/)
+- 索引每个字段的含义：[mods.json 格式](https://github.com/MDTCopper/copper-mods/blob/main/docs/mods.schema.zh_CN.md)

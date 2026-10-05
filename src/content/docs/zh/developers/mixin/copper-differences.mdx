@@ -49,11 +49,13 @@ public abstract class MyPatch { ... }
 
 ## Java 版本支持扩展
 
-原版 Mixin 0.8.7 官方支持到 Java 21。本项目**扩展支持 Java 22–25**（Mixin 环境兼容级别 `JAVA_17` ~ `JAVA_25`）：
+原版 Mixin 0.8.7 官方支持到 Java 21。本项目**扩展支持 Java 22–27**（Mixin 环境兼容级别 `JAVA_17` ~ `JAVA_27`）。上限不是"越新越好"，而是由**内置 ASM 能解析的类文件版本**钉死的：
 
-- 最低兼容级别：`JAVA_17`（这也是 Copper 要求 **Java 17+** 的原因之一）；
-- 最高兼容级别：`JAVA_25`；
-- 即使本机装了更新的 JDK，Mixin 也能正常工作。
+- **最低兼容级别 `JAVA_17`**：加载器的 Mixin 服务把下限报成它。低于它，JVM 连加载器与 Mixin 的类文件都加载不了；
+- **上限来自 ASM**：Mixin 解析标准库类时读的是**运行中 JRE 的 modules**——解析 `java.lang.Object` 拿到的就是这份 JRE 里的那一份，类文件版本随本机 JDK 走。加载器当前带 ASM **9.10.1**，认到类文件主版本 **71，即 Java 27**；在 JDK 28 上读到主版本 72 的标准库类，ASM 直接抛 `Unsupported class file major version 72`。所以**换更新的 JDK 不会把上限抬高，只会踩到 ASM 的上限**，不存在无限向上兼容；
+- **兼容级别说的是类文件版本**：你的 Mixin 类如果按更高的版本编译，可以在配置里声明 `compatibilityLevel`（该字段原样透传，见[配置 JSON 详解 · 原版字段透传](/zh/developers/mixin/config/#原版字段透传)），但它同样不能越过 `JAVA_27` 与 ASM 的能力。
+
+这条上限同时也是加载器自己声明的 **Java 支持范围，即 17 到 27**。范围写在 `gradle.properties` 的 `javaVersionRange` 里，与同一份文件里的 `asmVersion` 配套维护：构建时连同版本号一起写进 Jar 内的 `version.properties`，供启动器与工具判断某个加载器版本该配哪版 Java（见[加载器命令行 · 准备](/zh/developers/cli/#准备)，报错现象见[启动报错 · Java 版本问题](/zh/developers/startup-errors/#java-版本问题)）。
 
 ## 目标选择器默认值
 

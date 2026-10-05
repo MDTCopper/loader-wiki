@@ -11,7 +11,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 1. **游戏 Jar**：官方发布的**桌面版** Jar，例如从 [Mindustry 官方仓库 Release](https://github.com/Anuken/Mindustry/releases) 下载的 `Mindustry-Desktop-xxx.jar`，或 [MindustryBuilds](https://github.com/Anuken/MindustryBuilds/releases) 的 BE 构建。
 2. **加载器 Jar**：从 [MDTCopper/loader 的 Release](https://github.com/MDTCopper/loader/releases) 下载桌面端产物——带版本号的**发行版** `desktop-<版本>.jar`（固定不动，例如 `desktop-0.2.0.jar`），或者每次 push 都会重建的**快照** `desktop-snapshot.jar`（两者区别见下文）。`android-<版本>.jar` / `android-snapshot.jar` 是 Android 端用的构建器产物，桌面端不需要。本文后续示例统一把桌面产物写作 `CopperLoader.jar`。
-3. **Java 17 或更高版本**：Copper 的 Mixin 引擎要求 Java 17+。用更低的版本启动会直接失败并抛出 `UnsupportedClassVersionError`（见[启动报错 · Java 版本问题](/zh/developers/startup-errors/#java-版本问题)）。游戏本身的要求更高：**Mindustry v9 起要求 Java 25**，游戏 Jar 换成 v9 之后，请把这里的 `java` 也换成 JDK 25 或更高，否则同样会因为版本过低而启动失败。
+3. **Java 17–27**：Copper 的 Mixin 引擎要求 Java 17+，加载器当前声明的支持范围是 **17 到 27**。这个范围写在 loader 仓库 `gradle.properties` 的 `javaVersionRange` 里，构建时连同版本号一起写进 Jar 内的 `version.properties`，供启动器与工具判断该配哪版 Java。低于 17 会直接失败并抛出 `UnsupportedClassVersionError`；高于 27 同样不行——Mixin 解析标准库类时读的是运行中 JRE 的 modules，而加载器内置的 ASM 只认到 Java 27 的类文件版本，详见[启动报错 · Java 版本问题](/zh/developers/startup-errors/#java-版本问题)。游戏本身的要求更高：**Mindustry v9 起要求 Java 25**，游戏 Jar 换成 v9 之后，请把这里的 `java` 也换成 JDK 25 或更高（上限 27），否则同样会因为版本过低而启动失败。
 
 ## 启动
 

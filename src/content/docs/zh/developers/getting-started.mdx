@@ -7,6 +7,18 @@ import { Steps, Aside, FileTree } from '@astrojs/starlight/components';
 
 本页从官方模板 [mod-templete](https://github.com/MDTCopper/mod-templete) 起步：把模板改成你自己的模组，构建出 Jar，最后在 IDEA 里直接断点调试。**不用从零手写工程**——构建脚本、示例主类与 Mixin、调试用的运行配置，模板里都配好了。
 
+## 环境要求
+
+<Aside type="note" title="目前的 Java 支持范围是 17 到 27">
+	加载器**只支持 Java 17 到 27**。低于 17 会直接抛出 `UnsupportedClassVersionError` 起不来；高于 27 也不行——Mixin 解析标准库类时读的是运行中 JRE 的 modules，字节码版本随本机 JDK 走，而加载器内置的 ASM 只认到 Java 27 的类文件版本。这个范围写在 loader 仓库 `gradle.properties` 的 `javaVersionRange` 里，构建时连同版本号一起写进 Jar 内的 `version.properties`，随版本发布。
+</Aside>
+
+| 项目 | 要求 |
+| ---- | ---- |
+| JDK | **17–27**。**Mindustry v9 起要求 Java 25**，所以配 v9 的 `gameVersion` 调试时，请用 25 到 27 之间的 JDK（见[加载器命令行 · 准备](/zh/developers/cli/#准备)） |
+| 游戏 | 加载器要求官方发行版 **146.0 及以上**或 BE 构建号 **24369 及以上**（见[版本、依赖与冲突](/zh/developers/versions/#加载器支持的游戏版本)），模板默认的 `gameVersion` 已满足 |
+| 网络 | 首次构建要从 jitpack 拉取加载器与 Mixin 依赖；调试时还要下载加载器 Jar 与游戏 Jar |
+
 ## 获取模板
 
 <Steps>
@@ -101,7 +113,7 @@ ext {
 ```
 
 - **`copperVersion`** 填加载器的发行 tag（例如 `0.2.0`）或某个 commit hash。别写 `snapshot`——那是给 GitHub Release 用的通道名，也别写 `-SNAPSHOT`，jitpack 每次拉取都会重新构建，卡很久；
-- **`mixinVersion`** 必须与 `copperVersion` 配套：去 `https://github.com/MDTCopper/loader/blob/<copperVersion>/gradle.properties` 上看同一份声明（`mixinVersion=...`）；
+- **`mixinVersion`** 必须与 `copperVersion` 配套：去 `https://github.com/MDTCopper/loader/blob/<copperVersion>/gradle.properties` 上看同一份声明（`mixinVersion=...`）。两者成对出现，例如加载器 `0.2.0` 对应 `mixinVersion=0.1.7`；
 - **`gameVersion`** 决定编译时用的游戏 API，也决定调试时下载哪个游戏版本。
 
 依赖部分模板已经写好，一般不用动：
@@ -185,7 +197,7 @@ java --enable-native-access=ALL-UNNAMED -jar loader.jar -G game.jar \
 - **用的是项目自己的数据目录。** 配置的工作目录是项目根目录，加载器默认把当前目录下的 `.mindustry` 当数据目录，所以调试不会碰你平时玩的存档与模组（该目录已在 `.gitignore` 里）。想改用真实数据目录，就在 Program arguments 里加 `-D <路径>`；
 - **编译输出优先于 Jar。** `--mod-debug-classpath` 指向 Gradle 的编译输出 `build/classes/java/main`，它排在 Jar 里的同名类之前，所以代码改完必须**重新编译**才生效；`copper.mod.json` 这类元数据读的仍是被调试的那份 Jar，改了要重跑 `prepareDebug`；
 - **热交换默认只能改方法体。** 改方法体、改 Mixin 的注入逻辑可以热交换；增删字段或方法、改继承关系要重启游戏——这是运行用的 JDK 的限制，换掉它就能放宽，见[增强热交换](#增强热交换)。原理见[加载器命令行 · 调试模组](/zh/developers/cli/#调试模组)；
-- **JDK 版本。** `Debug` 配置把运行 JRE 指定成了 **25**，本机没有它就换成自己的 JDK。Copper 的 Mixin 引擎要求 17+（见[加载器命令行 · 准备](/zh/developers/cli/#准备)），而 **Mindustry v9 起要求 Java 25**——游戏版本到了 v9，只有 JDK 25 或更高才跑得起来；
+- **JDK 版本。** `Debug` 配置把运行 JRE 指定成了 **25**（加载器支持 17–27，见[环境要求](#环境要求)），本机没有 JDK 25 就换成 25 到 27 之间的一个；
 - **看 Mixin 的注入过程。** 在 Program arguments 末尾加上 `--mixin-log 你的模组id`，启动日志会打印每个 Mixin 的应用情况（见[Mixin 入门教程 · 调试技巧](/zh/developers/mixin/intro/#调试技巧)）。
 
 不想用 IDEA 的话，上面那条命令就是等价做法，各参数的含义见[加载器命令行](/zh/developers/cli/)。
